@@ -7,7 +7,7 @@ as $$
 declare
   current_user_id uuid := auth.uid();
 begin
-  if current_user_id is null then
+  if current_user_id is null then 
     raise exception 'You must be signed in to clear app data.'
       using errcode = '42501';
   end if;
