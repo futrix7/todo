@@ -20,6 +20,26 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Supabase setup
+
+Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `.env.local`.
+Run both SQL migrations, in timestamp order, in the Supabase Dashboard's SQL
+Editor:
+
+1. [`supabase/migrations/20261107000000_create_task_data.sql`](./supabase/migrations/20261107000000_create_task_data.sql)
+   creates the RLS-protected tables used by tasks, task completions, mood
+   check-ins, and analytics.
+2. [`supabase/migrations/20261108000000_create_social_features.sql`](./supabase/migrations/20261108000000_create_social_features.sql)
+   creates public profiles, friend requests, and notifications. It creates a
+   profile for existing accounts and automatically adds profiles for new
+   sign-ups. Friends are real registered users; no demo accounts or private
+   email addresses are exposed.
+
+Refresh the app after both queries succeed.
+
+Daily streaks continue when you save a check-in, add a task, or complete a
+task. Task-specific streaks still count completions for that task only.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
