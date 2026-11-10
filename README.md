@@ -22,20 +22,23 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 ## Supabase setup
 
-Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `.env.local`.
-Run both SQL migrations, in timestamp order, in the Supabase Dashboard's SQL
-Editor:
+Set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in
+`.env.local`. In the Supabase Dashboard SQL Editor, run these two scripts in
+order:
 
-1. [`supabase/migrations/20261107000000_create_task_data.sql`](./supabase/migrations/20261107000000_create_task_data.sql)
-   creates the RLS-protected tables used by tasks, task completions, mood
-   check-ins, and analytics.
-2. [`supabase/migrations/20261108000000_create_social_features.sql`](./supabase/migrations/20261108000000_create_social_features.sql)
-   creates public profiles, friend requests, and notifications. It creates a
-   profile for existing accounts and automatically adds profiles for new
-   sign-ups. Friends are real registered users; no demo accounts or private
-   email addresses are exposed.
+1. [`supabase/schema.sql`](./supabase/schema.sql) creates or updates all app
+   tables, row-level security policies, indexes, triggers, RPC functions, and
+   authenticated-user permissions. It is safe to re-run and does not drop user
+   data.
+2. [`supabase/challenge-seed.sql`](./supabase/challenge-seed.sql) populates the
+   challenge catalog and repairs generated tasks for users who already joined
+   a challenge. It can be re-run safely.
 
-Refresh the app after both queries succeed.
+The schema script supports both a fresh Supabase project and projects that
+already have the app tables. Existing timestamped SQL migrations have been
+consolidated into these two scripts; do not run the old migrations as well.
+Refresh the app after both scripts succeed. Re-run the schema script after
+updating the app to enable the one-time permanent username feature.
 
 Daily streaks continue when you save a check-in, add a task, or complete a
 task. Task-specific streaks still count completions for that task only.

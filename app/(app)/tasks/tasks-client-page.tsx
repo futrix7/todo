@@ -1,46 +1,36 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  CalendarClock,
-  ChevronRight,
-  CheckSquare,
-  Flame,
-  Loader2,
+  CalendarDays,
   ListTodo,
   MoreVertical,
   Pencil,
   Plus,
-  Smile,
+  Search,
   Trash2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
-import { dateKey, longDateLabel, shortLabel } from "@/lib/date-utils";
+import { shortLabel } from "@/lib/date-utils";
 import { getActivityStreaks } from "@/lib/task-activity";
-import { CATEGORIES, DURATIONS, REPEATS } from "@/lib/task-options";
+import { REPEATS } from "@/lib/task-options";
 import type {
-  Priority,
-  Repeat as RepeatType,
   Task,
   TaskCompletion,
+  TaskGroup,
 } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EASE, FadeIn } from "@/components/motion-fade";
 import { useTodayKey } from "@/lib/use-local-storage";
 import {
@@ -52,381 +42,39 @@ import {
   removeTask,
   saveCompletion,
   saveTask,
+  loadTaskGroups,
+  removeTaskGroup,
 } from "@/lib/supabase/task-data";
 import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
+import { PageLoadingSkeleton } from "@/components/page-loading-skeleton";
+import { TaskEditorDialog, taskFromForm, type TaskFormValues } from "@/components/task-editor-dialog";
 
 
 type Filter = "all" | "active" | "done";
 
-interface FormState {
-  title: string;
-  notes: string;
-  priority: Priority;
-  category: string;
-  dueDate: string;
-  startTime: string;
-  duration: number;
-  repeat: RepeatType;
-  reminder: boolean;
-  streakEnabled: boolean;
-}
-
-const EMPTY_FORM: FormState = {
-  title: "",
-  notes: "",
-  priority: "medium",
-  category: "Work",
-  dueDate: "",
-  startTime: "",
-  duration: 30,
-  repeat: "none",
-  reminder: false,
-  streakEnabled: false,
-};
-
-function formFromTask(task: Task): FormState {
-  return {
-    title: task.title,
-    notes: task.notes ?? "",
-    priority: task.priority,
-    category: task.category,
-    dueDate: task.dueDate ?? "",
-    startTime: task.startTime ?? "",
-    duration: task.duration ?? 30,
-    repeat: task.repeat,
-    reminder: task.reminder,
-    streakEnabled: task.streakEnabled,
-  };
-}
-
-function toTask(form: FormState, existing?: Task): Task {
-  return {
-    id: existing?.id ?? `t${Date.now().toString(36)}`,
-    title: form.title.trim(),
-    notes: form.notes.trim() || undefined,
-    completed: existing?.completed ?? false,
-    priority: form.priority,
-    category: form.category,
-    dueDate: form.dueDate || undefined,
-    startTime: form.startTime || undefined,
-    duration: form.duration,
-    repeat: form.repeat,
-    reminder: form.reminder,
-    streakEnabled: form.streakEnabled,
-    currentStreak: existing?.currentStreak ?? 0,
-    longestStreak: existing?.longestStreak ?? 0,
-    lastCompletedOn: existing?.lastCompletedOn,
-    createdAt: existing?.createdAt ?? dateKey(new Date()),
-  };
-}
-
-function TaskForm({
-  task,
-  onSave,
-  onCancel,
-}: {
-  task?: Task | null;
-  onSave: (form: FormState) => void;
-  onCancel: () => void;
-}) {
-  const isEditing = Boolean(task);
-  const [tab, setTab] = React.useState<"simple" | "advanced">(
-    task ? "advanced" : "simple"
-  );
-  const [form, setForm] = React.useState<FormState>(
-    task ? formFromTask(task) : EMPTY_FORM
-  );
-
-  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
-
-  function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!form.title.trim()) {
-      toast.error("Give your task a title first.");
-      return;
-    }
-    onSave(form);
-  }
-
-  return (
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          <Tabs value={tab} onValueChange={(v) => setTab(v as "simple" | "advanced")}>
-            <TabsList variant="line" className="w-full">
-              <TabsTrigger value="simple" className="flex-1">
-                <CheckSquare /> Simple
-              </TabsTrigger>
-              <TabsTrigger value="advanced" className="flex-1">
-                <CalendarClock /> Advanced
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="simple" className="flex flex-col gap-3 pt-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="task-title">Title</Label>
-                <Input
-                  id="task-title"
-                  value={form.title}
-                  onChange={(e) => set("title", e.target.value)}
-                  autoFocus
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="task-notes">Notes</Label>
-                <Textarea
-                  id="task-notes"
-                  rows={3}
-                  value={form.notes}
-                  onChange={(e) => set("notes", e.target.value)}
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="advanced" className="flex flex-col gap-3 pt-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="task-title-adv">Title</Label>
-                <Input
-                  id="task-title-adv"
-                  value={form.title}
-                  onChange={(e) => set("title", e.target.value)}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="task-date">Due date</Label>
-                  <Input
-                    id="task-date"
-                    type="date"
-                    value={form.dueDate}
-                    onChange={(e) => set("dueDate", e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="task-time">Start time</Label>
-                  <Input
-                    id="task-time"
-                    type="time"
-                    value={form.startTime}
-                    onChange={(e) => set("startTime", e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <Label>Duration</Label>
-                  <Select
-                    value={form.duration}
-                    onValueChange={(v) => set("duration", Number(v))}
-                    items={DURATIONS.map((d) => ({ value: d, label: `${d} min` }))}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DURATIONS.map((d) => (
-                        <SelectItem key={d} value={d}>
-                          {d} min
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <Label>Repeat</Label>
-                  <Select
-                    value={form.repeat}
-                    onValueChange={(v) => set("repeat", v as RepeatType)}
-                    items={REPEATS.map((r) => ({ value: r.value, label: r.label }))}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {REPEATS.map((r) => (
-                        <SelectItem key={r.value} value={r.value}>
-                          {r.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <Label>Priority</Label>
-                  <Select
-                    value={form.priority}
-                    onValueChange={(v) => set("priority", v as Priority)}
-                    items={[
-                      { value: "low", label: "Low" },
-                      { value: "medium", label: "Medium" },
-                      { value: "high", label: "High" },
-                    ]}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <Label>Category</Label>
-                  <Select
-                    value={form.category}
-                    onValueChange={(v) => set("category", v as string)}
-                    items={CATEGORIES.map((c) => ({ value: c, label: c }))}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="task-notes-adv">Notes</Label>
-                <Textarea
-                  id="task-notes-adv"
-                  rows={2}
-                  value={form.notes}
-                  onChange={(e) => set("notes", e.target.value)}
-                />
-              </div>
-
-              <div className="flex flex-col gap-2.5 rounded-lg border bg-muted/40 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium">Reminder</p>
-                  </div>
-                  <Switch
-                    checked={form.reminder}
-                    onCheckedChange={(v) => set("reminder", v)}
-                  />
-                </div>
-                <div className="h-px bg-border" />
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="flex items-center gap-1.5 text-sm font-medium">
-                      <Flame className="size-3.5 text-primary" /> Track
-                      streak
-                    </p>
-                  </div>
-                  <Switch
-                    checked={form.streakEnabled}
-                    onCheckedChange={(v) => set("streakEnabled", v)}
-                  />
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onCancel}>
-              Cancel
-            </Button>
-            <Button type="submit">
-              <Plus /> {isEditing ? "Save changes" : "Add task"}
-            </Button>
-          </DialogFooter>
-        </form>
-  );
-}
-
-function TaskDialog({
-  open,
-  onOpenChange,
-  task,
-  onSave,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  task?: Task | null;
-  onSave: (form: FormState) => void;
-}) {
-  const [closingTask, setClosingTask] = React.useState(task);
-  const [formResetKey, setFormResetKey] = React.useState(0);
-  const displayedTask = open ? task : closingTask;
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) setClosingTask(task);
-        onOpenChange(nextOpen);
-      }}
-      onOpenChangeComplete={(nextOpen) => {
-        if (!nextOpen) {
-          setClosingTask(null);
-          setFormResetKey((current) => current + 1);
-        }
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{displayedTask ? "Edit task" : "New task"}</DialogTitle>
-          <DialogDescription className="sr-only">
-            {displayedTask ? "Edit task details." : "Create a task."}
-          </DialogDescription>
-        </DialogHeader>
-        <TaskForm
-          key={`${displayedTask?.id ?? "new"}-${formResetKey}`}
-          task={displayedTask}
-          onSave={(form) => {
-            setClosingTask(displayedTask);
-            onSave(form);
-          }}
-          onCancel={() => onOpenChange(false)}
-        />
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function TaskItem({
+const TaskItem = React.memo(function TaskItem({
   task,
   onToggle,
   onEdit,
   onDelete,
+  onSelect,
+  selected,
   index,
 }: {
   task: Task;
   onToggle: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
+  onSelect: (task: Task) => void;
+  selected: boolean;
   index: number;
 }) {
-  const meta = [task.category, `${task.priority} priority`];
-  if (task.startTime) {
-    meta.push(
-      `${task.startTime}${task.duration ? ` · ${task.duration}m` : ""}`
-    );
-  }
-  if (task.dueDate) {
-    meta.push(shortLabel(task.dueDate));
-  }
-  if (task.repeat !== "none") {
-    const label = REPEATS.find((r) => r.value === task.repeat)?.label ?? task.repeat;
-    meta.push(label);
-  }
-  if (task.streakEnabled) {
-    meta.push(`${task.currentStreak} day streak`);
-  }
+  const isChallenge = task.category === "Challenge";
+  const priorityClass = {
+    low: "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+    medium: "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    high: "border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  }[task.priority];
 
   return (
     <motion.li
@@ -438,8 +86,18 @@ function TaskItem({
       className="group"
     >
       <div
+        onClick={(event) => {
+          if (
+            event.target instanceof Element &&
+            event.target.closest('button, [role="checkbox"], [role="menuitem"]')
+          ) {
+            return;
+          }
+          onSelect(task);
+        }}
         className={cn(
-          "flex min-w-0 items-start gap-2.5 rounded-xl border bg-card p-2.5 transition-colors hover:border-primary/20 hover:bg-muted/20 sm:gap-3 sm:p-3",
+          "flex min-w-0 cursor-pointer items-start gap-2.5 border-b border-l-2 border-l-transparent px-2 py-3 transition-colors hover:bg-muted/30 sm:gap-3 sm:px-3",
+          selected && "border-l-primary bg-primary/5",
           task.completed && "opacity-75"
         )}
       >
@@ -450,22 +108,75 @@ function TaskItem({
           aria-label={`Mark ${task.title} as ${task.completed ? "incomplete" : "complete"}`}
         />
         <div className="min-w-0 flex-1">
-          <p
+          <button
+            type="button"
+            onClick={() => onSelect(task)}
             className={cn(
-              "text-sm font-medium break-words leading-snug",
+              "flex flex-wrap items-center gap-x-2 gap-y-1 text-left text-sm font-medium leading-snug focus-visible:outline-none focus-visible:underline",
               task.completed && "text-muted-foreground line-through"
             )}
           >
-            {task.title}
-          </p>
+            <span>{task.title}</span>
+            {isChallenge && (
+              <span className="inline-flex shrink-0 items-center rounded-full border border-yellow-500/30 bg-yellow-400/15 px-2 py-0.5 text-[10px] font-semibold leading-none text-yellow-800 dark:text-yellow-300">
+                Challenge
+              </span>
+            )}
+          </button>
           {task.notes && (
             <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground sm:line-clamp-2">
               {task.notes}
             </p>
           )}
-          <p className="mt-1.5 truncate text-[11px] text-muted-foreground">
-            {meta.join(" · ")}
-          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+            {!isChallenge && (
+              <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-muted-foreground">
+                {task.category}
+              </span>
+            )}
+            <span className={cn("rounded-full border px-2 py-0.5 font-medium capitalize", priorityClass)}>
+              {task.priority} priority
+            </span>
+            {task.startTime && (
+              <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-muted-foreground">
+                {task.startTime}{task.duration ? ` · ${task.duration}m` : ""}
+              </span>
+            )}
+            {task.dueDate && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-primary/15 bg-primary/5 px-2 py-0.5 font-medium text-primary">
+                <CalendarDays className="size-3" />
+                {shortLabel(task.dueDate)}
+              </span>
+            )}
+            {task.repeat !== "none" && (
+              <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-muted-foreground">
+                {REPEATS.find((r) => r.value === task.repeat)?.label ?? task.repeat}
+              </span>
+            )}
+            {task.streakEnabled && (
+              <span
+                className={cn(
+                  "text-sm leading-none",
+                  task.currentStreak > 0
+                    ? "drop-shadow-sm"
+                    : "grayscale opacity-60"
+                )}
+                role="img"
+                aria-label={
+                  task.currentStreak > 0
+                    ? `${task.currentStreak} day streak`
+                    : "No active streak"
+                }
+                title={
+                  task.currentStreak > 0
+                    ? `${task.currentStreak} day streak`
+                    : "No active streak"
+                }
+              >
+                🔥
+              </span>
+            )}
+          </div>
         </div>
 
         <DropdownMenu>
@@ -493,6 +204,216 @@ function TaskItem({
       </div>
     </motion.li>
   );
+});
+
+function TaskDetails({
+  task,
+  group,
+  width,
+  onResizeStart,
+  onResize,
+  onResizeEnd,
+  onResizeWidth,
+  onClose,
+  onToggle,
+  onEdit,
+  onDelete,
+  onEditGroup,
+  onDeleteGroup,
+}: {
+  task?: Task;
+  group?: TaskGroup;
+  width: number;
+  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onResize: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onResizeEnd: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onResizeWidth: (amount: number) => void;
+  onClose: () => void;
+  onToggle: (task: Task) => void;
+  onEdit: (task: Task) => void;
+  onDelete: (task: Task) => void;
+  onEditGroup: (group: TaskGroup) => void;
+  onDeleteGroup: (group: TaskGroup) => void;
+}) {
+  const hasContent = Boolean(task || group);
+  return (
+    <aside
+      className={cn(
+        "relative flex min-h-72 min-w-0 shrink-0 flex-col border-t lg:min-h-0 lg:border-l lg:border-t-0",
+        "w-full lg:w-[var(--task-details-width)]"
+      )}
+      style={{ "--task-details-width": `${width}px` } as React.CSSProperties}
+      aria-label="Task details"
+    >
+      <div
+        role="separator"
+        aria-label="Resize task details panel"
+        aria-orientation="vertical"
+        aria-valuenow={width}
+        aria-valuemin={280}
+        aria-valuemax={560}
+        tabIndex={0}
+        onPointerDown={onResizeStart}
+        onPointerMove={onResize}
+        onPointerUp={onResizeEnd}
+        onPointerCancel={onResizeEnd}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            event.preventDefault();
+            const direction = event.key === "ArrowLeft" ? -1 : 1;
+            onResizeWidth(direction * 16);
+          }
+        }}
+        className="absolute inset-y-0 -left-1 z-10 hidden w-2 cursor-col-resize touch-none bg-transparent outline-none transition-colors hover:bg-foreground/10 focus-visible:bg-foreground/15 lg:block"
+      />
+      {hasContent ? (
+        <>
+          <div className="flex min-h-12 items-center justify-between border-b px-4">
+            <span className="truncate text-xs text-muted-foreground">
+              {task
+                ? task.dueDate
+                  ? shortLabel(task.dueDate)
+                  : "No due date"
+                : "Task group"}
+            </span>
+            {task && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Close task details"
+                onClick={onClose}
+              >
+                <X />
+              </Button>
+            )}
+          </div>
+          <div className="flex-1 space-y-5 overflow-y-auto p-4">
+            {group && (
+              <section className="border-b pb-4">
+                <p className="text-xs text-muted-foreground">Group</p>
+                <h2 className="mt-1 break-words text-base font-semibold">{group.name}</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Tasks in this group will be moved to Ungrouped if you delete it.
+                </p>
+              </section>
+            )}
+            {task ? (
+              <>
+            <div className="space-y-2">
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  checked={task.completed}
+                  onCheckedChange={() => onToggle(task)}
+                  aria-label={`Mark ${task.title} as ${task.completed ? "incomplete" : "complete"}`}
+                  className="mt-1"
+                />
+                <h2 className={cn("min-w-0 flex-1 break-words text-lg font-semibold leading-snug", task.completed && "text-muted-foreground line-through")}>
+                  {task.title}
+                </h2>
+              </div>
+              {task.notes ? (
+                <p className="whitespace-pre-wrap pl-6 text-sm leading-relaxed text-muted-foreground">
+                  {task.notes}
+                </p>
+              ) : (
+                <p className="pl-6 text-xs text-muted-foreground">
+                  Add notes to keep details for this task.
+                </p>
+              )}
+            </div>
+            <dl className="divide-y rounded-lg border px-3">
+              <div className="flex items-center justify-between gap-3 py-3 text-sm">
+                <dt className="text-muted-foreground">Priority</dt>
+                <dd className="font-medium capitalize">{task.priority}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 py-3 text-sm">
+                <dt className="text-muted-foreground">List</dt>
+                <dd className="max-w-40 truncate font-medium">
+                  {task.category === "Challenge" ? "Challenges" : task.category}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 py-3 text-sm">
+                <dt className="text-muted-foreground">Due date</dt>
+                <dd className="font-medium">
+                  {task.dueDate ? shortLabel(task.dueDate) : "Not set"}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 py-3 text-sm">
+                <dt className="text-muted-foreground">Repeat</dt>
+                <dd className="font-medium">
+                  {REPEATS.find((repeat) => repeat.value === task.repeat)?.label ?? "Does not repeat"}
+                </dd>
+              </div>
+              {task.streakEnabled && (
+                <div className="flex items-center justify-between gap-3 py-3 text-sm">
+                  <dt className="text-muted-foreground">Streak</dt>
+                  <dd className="font-medium">{task.currentStreak} days 🔥</dd>
+                </div>
+              )}
+            </dl>
+              </>
+            ) : (
+              <div className="flex min-h-32 flex-col items-center justify-center gap-2 text-center">
+                <ListTodo className="size-8 text-muted-foreground/60" />
+                <p className="text-sm font-medium">Group details</p>
+                <p className="text-xs text-muted-foreground">
+                  Select a task to view its notes, schedule, and progress.
+                </p>
+              </div>
+            )}
+          </div>
+          {group && (
+            <div className="flex gap-2 border-t p-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onEditGroup(group)}
+                className="flex-1 justify-start gap-2"
+              >
+                <Pencil />
+                Edit group
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onDeleteGroup(group)}
+                className="flex-1 justify-start gap-2"
+              >
+                <Trash2 />
+                Delete
+              </Button>
+            </div>
+          )}
+          {task && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t p-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onDelete(task)}
+                className="gap-2"
+              >
+                <Trash2 />
+                Delete task
+              </Button>
+              <Button type="button" onClick={() => onEdit(task)}>
+                <Pencil />
+                Edit task
+              </Button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+          <ListTodo className="size-8 text-muted-foreground/60" />
+          <p className="text-sm font-medium">Task details</p>
+          <p className="text-xs text-muted-foreground">
+            Select a task to view its notes, schedule, and progress.
+          </p>
+        </div>
+      )}
+    </aside>
+  );
 }
 
 export default function TasksClientPage() {
@@ -505,12 +426,115 @@ export default function TasksClientPage() {
   } = useSupabaseDataStatus();
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const [completions, setCompletions] = React.useState<TaskCompletion[]>([]);
+  const [taskGroups, setTaskGroups] = React.useState<TaskGroup[]>([]);
   const todayKey = useTodayKey();
   const [loadedUserId, setLoadedUserId] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<Filter>("all");
+  const [selectedGroupId, setSelectedGroupId] = React.useState("all");
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Task | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<Task | null>(null);
+  const [deleteGroupTarget, setDeleteGroupTarget] = React.useState<TaskGroup | null>(null);
+  const [taskSearch, setTaskSearch] = React.useState("");
+  const deferredTaskSearch = React.useDeferredValue(taskSearch);
+  const [taskListLimit, setTaskListLimit] = React.useState(100);
+  const [selectedTaskId, setSelectedTaskId] = React.useState<string | null>(null);
+  const [taskDetailsWidth, setTaskDetailsWidth] = React.useState(320);
+  const [resizingDetails, setResizingDetails] = React.useState(false);
+  const listDetailsRef = React.useRef<HTMLDivElement>(null);
+
+  function getMaxTaskDetailsWidth() {
+    const paneWidth = listDetailsRef.current?.clientWidth ?? window.innerWidth;
+    return Math.max(280, Math.min(560, paneWidth - 300));
+  }
+
+  function resizeTaskDetails(event: React.PointerEvent<HTMLDivElement>) {
+    if (!resizingDetails || !listDetailsRef.current) return;
+    const rightEdge = listDetailsRef.current.getBoundingClientRect().right;
+    setTaskDetailsWidth(
+      Math.round(
+        Math.min(getMaxTaskDetailsWidth(), Math.max(280, rightEdge - event.clientX))
+      )
+    );
+  }
+
+  function startResizingTaskDetails(event: React.PointerEvent<HTMLDivElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizingDetails(true);
+    const rightEdge = listDetailsRef.current?.getBoundingClientRect().right;
+    if (rightEdge !== undefined) {
+      setTaskDetailsWidth(
+        Math.round(
+          Math.min(getMaxTaskDetailsWidth(), Math.max(280, rightEdge - event.clientX))
+        )
+      );
+    }
+  }
+
+  function stopResizingTaskDetails(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setResizingDetails(false);
+  }
+
+  React.useEffect(() => {
+    function syncGroupFromHash() {
+      const groupId = new URLSearchParams(window.location.hash.slice(1)).get("group");
+      setSelectedGroupId(groupId ?? "all");
+    }
+
+    function handleGroupSelection(event: Event) {
+      if (!(event instanceof CustomEvent)) return;
+      if (typeof event.detail !== "string") return;
+      setSelectedGroupId(event.detail);
+      setTaskListLimit(100);
+    }
+
+    syncGroupFromHash();
+    window.addEventListener("hashchange", syncGroupFromHash);
+    window.addEventListener("popstate", syncGroupFromHash);
+    window.addEventListener("task-group-selected", handleGroupSelection);
+    return () => {
+      window.removeEventListener("hashchange", syncGroupFromHash);
+      window.removeEventListener("popstate", syncGroupFromHash);
+      window.removeEventListener("task-group-selected", handleGroupSelection);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    function handleGroupCreated(event: Event) {
+      if (!(event instanceof CustomEvent)) return;
+      const group = event.detail as TaskGroup | undefined;
+      if (!group?.id || typeof group.name !== "string") return;
+      setTaskGroups((current) =>
+        [...current.filter((item) => item.id !== group.id), group].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        )
+      );
+      setSelectedGroupId(group.id);
+    }
+
+    window.addEventListener("task-group-created", handleGroupCreated);
+    return () => window.removeEventListener("task-group-created", handleGroupCreated);
+  }, []);
+
+  React.useEffect(() => {
+    function handleGroupUpdated(event: Event) {
+      if (!(event instanceof CustomEvent)) return;
+      const group = event.detail as TaskGroup | undefined;
+      if (!group?.id || typeof group.name !== "string") return;
+      setTaskGroups((current) =>
+        [...current.filter((item) => item.id !== group.id), group].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        )
+      );
+    }
+
+    window.addEventListener("task-group-updated", handleGroupUpdated);
+    return () =>
+      window.removeEventListener("task-group-updated", handleGroupUpdated);
+  }, []);
 
   React.useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -520,13 +544,24 @@ export default function TasksClientPage() {
     if (schemaUnavailable || isTaskDataSchemaUnavailable()) return;
 
     let active = true;
-    loadTasks(userId)
-      .then(async (remoteTasks) => {
+    Promise.all([
+      loadTasks(userId),
+      loadCompletions(userId),
+      loadTaskGroups(userId),
+    ])
+      .then(([remoteTasks, remoteCompletions, remoteGroups]) => {
         if (!active) return;
         setTasks(remoteTasks);
-        const remoteCompletions = await loadCompletions(userId);
-        if (!active) return;
         setCompletions(remoteCompletions);
+        setTaskGroups(remoteGroups);
+        setSelectedGroupId((current) =>
+          current === "all" ||
+          current === "ungrouped" ||
+          current === "challenges" ||
+          remoteGroups.some((group) => group.id === current)
+            ? current
+            : "all"
+        );
         setLoadedUserId(userId);
       })
       .catch((error: unknown) => {
@@ -538,40 +573,188 @@ export default function TasksClientPage() {
     return () => {
       active = false;
     };
-  }, [user?.id, setTasks, setCompletions, reportError, schemaUnavailable]);
+  }, [user?.id, reportError, schemaUnavailable]);
 
-  const completedToday = new Set(
-    completions
-      .filter((completion) => completion.completedOn === todayKey)
-      .map((completion) => completion.taskId)
+  const completionsByTask = React.useMemo(() => {
+    const indexed = new Map<string, TaskCompletion[]>();
+    for (const completion of completions) {
+      const history = indexed.get(completion.taskId);
+      if (history) history.push(completion);
+      else indexed.set(completion.taskId, [completion]);
+    }
+    return indexed;
+  }, [completions]);
+  const completedToday = React.useMemo(() => {
+    const completed = new Set<string>();
+    for (const completion of completions) {
+      if (completion.completedOn === todayKey) completed.add(completion.taskId);
+    }
+    return completed;
+  }, [completions, todayKey]);
+  const dailyTasks = React.useMemo(
+    () =>
+      tasks.map((task) => {
+        const taskStreaks = getActivityStreaks(
+          completionsByTask.get(task.id) ?? [],
+          todayKey
+        );
+        return {
+          ...task,
+          completed:
+            task.repeat === "none"
+              ? task.completed
+              : completedToday.has(task.id) ||
+                Boolean(todayKey && task.lastCompletedOn === todayKey),
+          currentStreak: taskStreaks.current,
+          longestStreak: Math.max(task.longestStreak, taskStreaks.longest),
+        };
+      }),
+    [tasks, completionsByTask, completedToday, todayKey]
   );
-  const dailyTasks = tasks.map((task) => {
-    const taskHistory = completions.filter((item) => item.taskId === task.id);
-    const taskStreaks = getActivityStreaks(taskHistory, todayKey);
-    return {
-      ...task,
-      completed:
-        task.repeat === "none"
-          ? task.completed
-          : completedToday.has(task.id) ||
-            Boolean(todayKey && task.lastCompletedOn === todayKey),
-      currentStreak: taskStreaks.current,
-      longestStreak: Math.max(task.longestStreak, taskStreaks.longest),
-    };
-  });
-  const visible = dailyTasks.filter((task) =>
-    filter === "all" ? true : filter === "active" ? !task.completed : task.completed
+  const searchTextByTaskId = React.useMemo(
+    () =>
+      new Map(
+        dailyTasks.map((task) => [
+          task.id,
+          `${task.title}\n${task.notes ?? ""}`.toLocaleLowerCase(),
+        ])
+      ),
+    [dailyTasks]
   );
-  const doneCount = dailyTasks.filter((task) => task.completed).length;
-  const progress = dailyTasks.length ? (doneCount / dailyTasks.length) * 100 : 0;
+  const normalizedSearch = deferredTaskSearch.trim().toLocaleLowerCase();
+  const { visible, visibleChallenges, groupedTaskCount, doneCount } =
+    React.useMemo(() => {
+      const visible: Task[] = [];
+      const visibleChallenges: Task[] = [];
+      let groupedTaskCount = 0;
+      let doneCount = 0;
 
-  function handleCreate() {
+      for (const task of dailyTasks) {
+        if (
+          normalizedSearch &&
+          !searchTextByTaskId.get(task.id)?.includes(normalizedSearch)
+        ) {
+          continue;
+        }
+
+        const isChallenge = task.category === "Challenge";
+        const matchesGroup =
+          selectedGroupId === "all" ||
+          (selectedGroupId === "challenges"
+            ? isChallenge
+            : selectedGroupId === "ungrouped"
+              ? !task.groupId && !isChallenge
+              : task.groupId === selectedGroupId);
+        if (!matchesGroup) continue;
+
+        groupedTaskCount++;
+        if (task.completed) doneCount++;
+        if (filter === "active" && task.completed) continue;
+        if (filter === "done" && !task.completed) continue;
+
+        if (selectedGroupId === "all" && isChallenge) {
+          visibleChallenges.push(task);
+        } else {
+          visible.push(task);
+        }
+      }
+
+      return { visible, visibleChallenges, groupedTaskCount, doneCount };
+    }, [
+      dailyTasks,
+      filter,
+      normalizedSearch,
+      searchTextByTaskId,
+      selectedGroupId,
+    ]);
+  const displayedTasks = visible.slice(0, taskListLimit);
+  const displayedChallenges = visibleChallenges.slice(
+    0,
+    Math.max(0, taskListLimit - displayedTasks.length)
+  );
+  const hasMoreTasks =
+    displayedTasks.length + displayedChallenges.length <
+    visible.length + visibleChallenges.length;
+  const taskDetailsCandidates = React.useMemo(
+    () =>
+      dailyTasks.filter((task) => {
+        if (
+          normalizedSearch &&
+          !searchTextByTaskId.get(task.id)?.includes(normalizedSearch)
+        ) {
+          return false;
+        }
+        const isChallenge = task.category === "Challenge";
+        return (
+          selectedGroupId === "all" ||
+          (selectedGroupId === "challenges"
+            ? isChallenge
+            : selectedGroupId === "ungrouped"
+              ? !task.groupId && !isChallenge
+              : task.groupId === selectedGroupId)
+        );
+      }),
+    [dailyTasks, normalizedSearch, searchTextByTaskId, selectedGroupId]
+  );
+  const selectedTask = taskDetailsCandidates.find(
+    (task) => task.id === selectedTaskId
+  );
+  const progress = groupedTaskCount
+    ? (doneCount / groupedTaskCount) * 100
+    : 0;
+  const selectedGroupName =
+    selectedGroupId === "all"
+      ? "All tasks"
+      : selectedGroupId === "ungrouped"
+        ? "Ungrouped tasks"
+        : selectedGroupId === "challenges"
+          ? "Challenge tasks"
+          : taskGroups.find((group) => group.id === selectedGroupId)?.name ??
+            "All tasks";
+  const selectedGroup = taskGroups.find((group) => group.id === selectedGroupId);
+
+  const handleCreate = React.useCallback(() => {
     setEditing(null);
     setDialogOpen(true);
-  }
+  }, []);
 
-  async function handleSave(form: FormState) {
-    const task = editing ? toTask(form, editing) : toTask(form);
+  React.useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      if (
+        event.key.toLowerCase() !== "a" ||
+        !event.shiftKey ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.repeat ||
+        event.defaultPrevented ||
+        dialogOpen ||
+        deleteTarget
+      ) {
+        return;
+      }
+
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest(
+            'input, textarea, select, [role="combobox"], [role="textbox"]'
+          ))
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      handleCreate();
+    }
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [deleteTarget, dialogOpen, handleCreate]);
+
+  const handleSave = React.useCallback(async (form: TaskFormValues) => {
+    const task = taskFromForm(form, editing ?? undefined);
     if (isTaskDataSchemaUnavailable()) {
       reportSchemaUnavailable();
       return;
@@ -595,11 +778,19 @@ export default function TasksClientPage() {
       setTasks((prev) => [task, ...prev]);
       toast.success("Task added. Planning counts toward your daily streak.");
     }
+    setSelectedTaskId(task.id);
     setDialogOpen(false);
     setEditing(null);
-  }
+  }, [
+    editing,
+    reportConfigurationError,
+    reportError,
+    reportSchemaUnavailable,
+    user,
+  ]);
 
-  async function handleToggle(task: Task) {
+  const handleToggle = React.useCallback(async (task: Task) => {
+    setSelectedTaskId(task.id);
     if (!todayKey) {
       toast.error("Today's date is not available yet. Please try again.");
       return;
@@ -614,8 +805,8 @@ export default function TasksClientPage() {
     }
     const completing = !task.completed;
     const today = todayKey;
-    const taskHistory = completions.filter(
-      (item) => item.taskId === task.id && item.completedOn !== today
+    const taskHistory = (completionsByTask.get(task.id) ?? []).filter(
+      (item) => item.completedOn !== today
     );
     const nextTaskHistory = completing
       ? [...taskHistory, {
@@ -625,16 +816,20 @@ export default function TasksClientPage() {
         }]
       : taskHistory;
     const taskStreaks = getActivityStreaks(nextTaskHistory, today);
+    const previousLastCompletedOn = taskHistory.reduce(
+      (latest, item) => item.completedOn > latest ? item.completedOn : latest,
+      ""
+    );
     const nextTask: Task = {
       ...task,
       completed: completing,
       currentStreak: taskStreaks.current,
       longestStreak: Math.max(task.longestStreak, taskStreaks.longest),
-      lastCompletedOn:
-        nextTaskHistory
-          .map((item) => item.completedOn)
-          .sort()
-          .at(-1) || undefined,
+      lastCompletedOn: completing
+        ? today > previousLastCompletedOn
+          ? today
+          : previousLastCompletedOn || undefined
+        : previousLastCompletedOn || undefined,
     };
     const completion: TaskCompletion = {
       taskId: task.id,
@@ -668,9 +863,16 @@ export default function TasksClientPage() {
     if (completing) {
       toast.success(`Nice one — “${task.title}” done! 🎉`);
     }
-  }
+  }, [
+    completionsByTask,
+    reportConfigurationError,
+    reportError,
+    reportSchemaUnavailable,
+    todayKey,
+    user,
+  ]);
 
-  async function handleDelete(task: Task) {
+  const handleDelete = React.useCallback(async (task: Task) => {
     if (isTaskDataSchemaUnavailable()) {
       reportSchemaUnavailable();
       return;
@@ -688,7 +890,58 @@ export default function TasksClientPage() {
     }
     setTasks((prev) => prev.filter((item) => item.id !== task.id));
     setCompletions((prev) => prev.filter((item) => item.taskId !== task.id));
+    setSelectedTaskId((current) => (current === task.id ? null : current));
     toast.info(`“${task.title}” deleted.`);
+  }, [
+    reportConfigurationError,
+    reportError,
+    reportSchemaUnavailable,
+    user,
+  ]);
+
+  const handleSelectTask = React.useCallback(
+    (task: Task) => setSelectedTaskId(task.id),
+    []
+  );
+  const handleEditTask = React.useCallback((task: Task) => {
+    setEditing(task);
+    setDialogOpen(true);
+  }, []);
+  const handleRequestDelete = React.useCallback((task: Task) => {
+    setDeleteTarget(task);
+  }, []);
+
+  async function handleDeleteGroup(group: TaskGroup) {
+    if (isTaskDataSchemaUnavailable()) {
+      reportSchemaUnavailable();
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      reportConfigurationError();
+      return;
+    }
+
+    try {
+      if (!user?.id) throw new Error("A valid Supabase session is required.");
+      const groupTasks = tasks.filter((task) => task.groupId === group.id);
+      const ungroupedTasks = groupTasks.map((task) => ({
+        ...task,
+        groupId: undefined,
+      }));
+      await removeTaskGroup(group.id);
+      const ungroupedById = new Map(ungroupedTasks.map((task) => [task.id, task]));
+      setTasks((current) =>
+        current.map((task) => ungroupedById.get(task.id) ?? task)
+      );
+      setTaskGroups((current) => current.filter((item) => item.id !== group.id));
+      setSelectedGroupId("all");
+      window.location.hash = "group=all";
+      window.dispatchEvent(new Event("task-groups-updated"));
+      setDeleteGroupTarget(null);
+      toast.success(`“${group.name}” deleted. Its tasks are now ungrouped.`);
+    } catch (error) {
+      reportError(error);
+    }
   }
 
   if (isSupabaseConfigured && !user?.id) {
@@ -704,47 +957,49 @@ export default function TasksClientPage() {
     loadedUserId !== user?.id &&
     !schemaUnavailable
   ) {
-    return (
-      <div className="flex min-h-48 items-center justify-center" role="status">
-        <Loader2 className="size-6 animate-spin text-primary" />
-        <span className="sr-only">Loading tasks</span>
-      </div>
-    );
+    return <PageLoadingSkeleton label="Loading tasks" variant="tasks" />;
   }
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-6">
-      {/* How is your day? */}
-      <FadeIn>
-        <Link
-          href="/days"
-          className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        >
-          <Card className="transition-colors hover:border-primary/30 hover:bg-primary/[0.02]">
-            <CardContent className="flex items-center gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                <Smile className="size-5 text-primary" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-heading text-sm font-medium">
-                  How is your day?
-                </span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {todayKey ? longDateLabel(todayKey) : ""}
-                </span>
-              </span>
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-            </CardContent>
-          </Card>
-        </Link>
-      </FadeIn>
-
+    <div
+      ref={listDetailsRef}
+      className="flex min-h-[calc(100dvh-5rem)] w-full min-w-0 flex-col items-stretch gap-4 lg:h-full lg:min-h-0 lg:flex-row lg:gap-0"
+    >
+      <section className="flex min-w-0 flex-1 flex-col gap-4 px-2 py-3 sm:gap-6 lg:min-h-0 lg:overflow-hidden lg:py-4 lg:pl-2 lg:pr-5">
       {/* Header + progress */}
       <FadeIn delay={0.06} className="flex flex-col gap-3">
-        <div className="min-w-0">
-          <h2 className="font-heading text-xl font-semibold tracking-tight">
-            Today&apos;s tasks
-          </h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="font-heading text-xl font-semibold tracking-tight">
+              {selectedGroupName}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {groupedTaskCount} {groupedTaskCount === 1 ? "task" : "tasks"}
+            </p>
+          </div>
+          <Button
+            type="button"
+            onClick={handleCreate}
+            aria-keyshortcuts="Shift+A"
+            title="Add task (Shift+A)"
+          >
+            <Plus />
+            Add task
+            <kbd className="hidden rounded-md border border-primary-foreground/20 bg-primary-foreground/10 px-1.5 py-0.5 text-xs font-medium lg:inline-flex">
+              Shift + A
+            </kbd>
+          </Button>
+        </div>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={taskSearch}
+            onChange={(event) => setTaskSearch(event.target.value)}
+            placeholder="Search tasks"
+            aria-label="Search tasks by title or notes"
+            className="h-10 pl-9"
+          />
         </div>
         <Progress value={progress} className="[&_[data-slot=progress-track]]:h-3" />
         <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
@@ -757,52 +1012,133 @@ export default function TasksClientPage() {
       </FadeIn>
 
       {/* Task list */}
-      <FadeIn delay={0.12}>
-        {visible.length === 0 ? (
+      <div
+        className="min-h-0 min-w-0 flex-1 overflow-y-auto lg:pr-1"
+        data-resizing={resizingDetails || undefined}
+      >
+      <FadeIn delay={0.12} className="min-w-0">
+        {visible.length === 0 &&
+        (selectedGroupId !== "all" || visibleChallenges.length === 0) ? (
           <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed py-14 text-center">
             <ListTodo className="size-8 text-muted-foreground" />
             <div>
               <p className="font-medium">No tasks here</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Add a task to start building your daily list.
+                {selectedGroupId === "all"
+                  ? "Add a task to start building your daily list."
+                  : `Add a task to ${selectedGroupName.toLowerCase()}.`}
               </p>
             </div>
           </div>
         ) : (
-          <ul className="flex min-w-0 flex-col gap-2">
-            <AnimatePresence mode="popLayout">
-              {visible.map((task, i) => (
-                <TaskItem
-                  key={task.id}
-                  task={task}
-                  index={i}
-                  onToggle={handleToggle}
-                  onEdit={(t) => {
-                    setEditing(t);
-                    setDialogOpen(true);
-                  }}
-                  onDelete={(taskToDelete) => setDeleteTarget(taskToDelete)}
-                />
-              ))}
-            </AnimatePresence>
-          </ul>
+          <div className="flex flex-col gap-6">
+            {displayedTasks.length > 0 && (
+              <ul className="flex min-w-0 flex-col gap-2">
+                <AnimatePresence mode="popLayout">
+                  {displayedTasks.map((task, i) => (
+                    <TaskItem
+                      key={task.id}
+                      task={task}
+                      index={i}
+                      selected={selectedTask?.id === task.id}
+                      onToggle={handleToggle}
+                      onSelect={handleSelectTask}
+                      onEdit={handleEditTask}
+                      onDelete={handleRequestDelete}
+                    />
+                  ))}
+                </AnimatePresence>
+              </ul>
+            )}
+            {selectedGroupId === "all" && displayedChallenges.length > 0 && (
+              <section aria-labelledby="challenge-tasks-heading" className="flex flex-col gap-3">
+                <div className="flex items-center gap-2 border-b pb-2">
+                  <h3 id="challenge-tasks-heading" className="font-heading text-sm font-semibold">
+                    Challenges
+                  </h3>
+                  <span className="inline-flex items-center rounded-full border border-yellow-500/30 bg-yellow-400/15 px-2 py-0.5 text-[10px] font-semibold text-yellow-800 dark:text-yellow-300">
+                    {visibleChallenges.length}
+                  </span>
+                </div>
+                <ul className="flex min-w-0 flex-col gap-2">
+                  <AnimatePresence mode="popLayout">
+                    {displayedChallenges.map((task, i) => (
+                      <TaskItem
+                        key={task.id}
+                        task={task}
+                        index={visible.length + i}
+                        selected={selectedTask?.id === task.id}
+                        onToggle={handleToggle}
+                        onSelect={handleSelectTask}
+                        onEdit={handleEditTask}
+                        onDelete={handleRequestDelete}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </ul>
+              </section>
+            )}
+            {hasMoreTasks && (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setTaskListLimit((current) => current + 100)
+                  }
+                >
+                  Show more tasks (
+                  {visible.length + visibleChallenges.length -
+                    displayedTasks.length -
+                    displayedChallenges.length}{" "}
+                  remaining)
+                </Button>
+              </div>
+            )}
+          </div>
         )}
       </FadeIn>
+      </div>
+      </section>
+      <TaskDetails
+        task={selectedTask}
+        group={selectedGroup}
+        width={taskDetailsWidth}
+        onResizeStart={startResizingTaskDetails}
+        onResize={resizeTaskDetails}
+        onResizeEnd={stopResizingTaskDetails}
+        onResizeWidth={(delta) =>
+          setTaskDetailsWidth((current) =>
+            Math.min(getMaxTaskDetailsWidth(), Math.max(280, current + delta))
+          )
+        }
+        onClose={() => setSelectedTaskId(null)}
+        onToggle={handleToggle}
+        onEdit={handleEditTask}
+        onDelete={handleRequestDelete}
+        onEditGroup={(group) =>
+          window.dispatchEvent(
+            new CustomEvent("task-group-edit-requested", { detail: group })
+          )
+        }
+        onDeleteGroup={(group) => setDeleteGroupTarget(group)}
+      />
 
-      <Button
-        onClick={handleCreate}
-        className="fixed right-4 bottom-[calc(7rem+env(safe-area-inset-bottom))] z-30 h-11 rounded-full px-4 shadow-lg md:right-6 md:bottom-6"
-      >
-        <Plus /> Add task
-      </Button>
-
-      <TaskDialog
+      <TaskEditorDialog
         open={dialogOpen}
         onOpenChange={(open) => {
           setDialogOpen(open);
           if (!open) setEditing(null);
         }}
         task={editing}
+        groups={taskGroups}
+        defaultGroupId={
+          selectedGroupId !== "all" &&
+          selectedGroupId !== "ungrouped" &&
+          selectedGroupId !== "challenges"
+            ? selectedGroupId
+            : undefined
+        }
         onSave={handleSave}
       />
 
@@ -837,6 +1173,40 @@ export default function TasksClientPage() {
               }}
             >
               Delete task
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deleteGroupTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteGroupTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this group?</DialogTitle>
+            <DialogDescription>
+              {deleteGroupTarget
+                ? `“${deleteGroupTarget.name}” will be deleted. Its tasks will be moved to Ungrouped.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteGroupTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteGroupTarget) void handleDeleteGroup(deleteGroupTarget);
+              }}
+            >
+              Delete group
             </Button>
           </DialogFooter>
         </DialogContent>

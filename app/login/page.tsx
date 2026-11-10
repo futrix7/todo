@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, LogIn } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { toast } from "sonner";
 
 import { isSupabaseConfigured, useAuth } from "@/lib/auth";
@@ -85,15 +85,12 @@ export default function LoginPage() {
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <Label htmlFor="password">Password</Label>
-            <button
-              type="button"
-              onClick={() =>
-                toast.info("Password recovery is not wired up yet.")
-              }
+            <Link
+              href="/forgot-password"
               className="text-xs text-muted-foreground hover:text-foreground"
             >
               Forgot password?
-            </button>
+            </Link>
           </div>
           <Input
             id="password"
@@ -111,11 +108,7 @@ export default function LoginPage() {
           disabled={loading || !isSupabaseConfigured}
           className="mt-1"
         >
-          {loading ? (
-            <Loader2 className="animate-spin" />
-          ) : (
-            <LogIn />
-          )}
+          <LogIn />
           {loading ? "Signing in…" : "Log in"}
         </Button>
       </form>

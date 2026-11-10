@@ -1,23 +1,26 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { toast } from "sonner";
 import {
   Bell,
   Check,
   CheckCheck,
-  Loader2,
   Trash2,
   UsersRound,
+  X,
 } from "lucide-react";
 
 import { useAuth } from "@/lib/auth";
 import {
   deleteNotification,
   loadNotifications,
+  loadPendingFriendRequestIds,
+  loadUnreadNotificationCount,
   markAllNotificationsRead,
   markNotificationRead,
+  publishUnreadNotificationCount,
+  respondToFriendRequest,
   type SocialNotification,
 } from "@/lib/supabase/social-data";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -30,6 +33,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { FadeIn } from "@/components/motion-fade";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function initials(name: string) {
   return name
@@ -63,6 +67,9 @@ function notificationText(notification: SocialNotification) {
 
 function errorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "Something went wrong.";
+  if (message.includes("friend_limit_reached")) {
+    return "You can have up to 20 friends. Remove a friend before accepting this request.";
+  }
   if (
     message.includes("friend_requests") ||
     message.includes("profiles") ||
@@ -77,6 +84,9 @@ export default function NotificationsClientPage() {
   const { user } = useAuth();
   const userId = user?.id;
   const [notifications, setNotifications] = React.useState<SocialNotification[]>([]);
+  const [pendingRequestIds, setPendingRequestIds] = React.useState<Set<string>>(
+    new Set()
+  );
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
@@ -84,8 +94,14 @@ export default function NotificationsClientPage() {
 
   const refresh = React.useCallback(async () => {
     if (!userId) return;
-    const data = await loadNotifications(userId);
+    const [data, unreadCount, requestIds] = await Promise.all([
+      loadNotifications(userId),
+      loadUnreadNotificationCount(userId),
+      loadPendingFriendRequestIds(userId),
+    ]);
     setNotifications(data);
+    setPendingRequestIds(new Set(requestIds));
+    publishUnreadNotificationCount(unreadCount);
     setLoadError(null);
   }, [userId]);
 
@@ -93,10 +109,16 @@ export default function NotificationsClientPage() {
     let active = true;
     if (!userId) return;
 
-    loadNotifications(userId)
-      .then((data) => {
+    Promise.all([
+      loadNotifications(userId),
+      loadUnreadNotificationCount(userId),
+      loadPendingFriendRequestIds(userId),
+    ])
+      .then(([data, unreadCount, requestIds]) => {
         if (!active) return;
         setNotifications(data);
+        setPendingRequestIds(new Set(requestIds));
+        publishUnreadNotificationCount(unreadCount);
         setLoadError(null);
       })
       .catch((error: unknown) => {
@@ -142,6 +164,8 @@ export default function NotificationsClientPage() {
             : item
         )
       );
+      const unreadCount = await loadUnreadNotificationCount(userId);
+      publishUnreadNotificationCount(unreadCount);
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -158,6 +182,7 @@ export default function NotificationsClientPage() {
       setNotifications((current) =>
         current.map((item) => ({ ...item, read_at: item.read_at ?? readAt }))
       );
+      publishUnreadNotificationCount(0);
       toast.success("All notifications marked as read.");
     } catch (error) {
       toast.error(errorMessage(error));
@@ -173,6 +198,48 @@ export default function NotificationsClientPage() {
       await deleteNotification(notification.id, userId);
       setNotifications((current) =>
         current.filter((item) => item.id !== notification.id)
+      );
+      if (!notification.read_at) {
+        const unreadCount = await loadUnreadNotificationCount(userId);
+        publishUnreadNotificationCount(unreadCount);
+      }
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function respondToRequest(
+    notification: SocialNotification,
+    status: "accepted" | "declined"
+  ) {
+    const requestId = notification.request_id;
+    if (!userId || !requestId) return;
+    setBusyId(notification.id);
+    try {
+      await respondToFriendRequest(requestId, userId, status);
+      setPendingRequestIds((current) => {
+        const next = new Set(current);
+        next.delete(requestId);
+        return next;
+      });
+
+      const readAt = notification.read_at ?? new Date().toISOString();
+      if (!notification.read_at) {
+        await markNotificationRead(notification.id, userId);
+      }
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, read_at: readAt } : item
+        )
+      );
+      const unreadCount = await loadUnreadNotificationCount(userId);
+      publishUnreadNotificationCount(unreadCount);
+      toast.success(
+        status === "accepted"
+          ? `You and ${notification.actor?.display_name ?? "this person"} are now friends.`
+          : "Friend request declined."
       );
     } catch (error) {
       toast.error(errorMessage(error));
@@ -190,9 +257,12 @@ export default function NotificationsClientPage() {
   }
 
   const unreadCount = notifications.filter((item) => !item.read_at).length;
+  const unreadFriendRequestCount = notifications.filter(
+    (item) => item.kind === "friend_request" && !item.read_at
+  ).length;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 sm:gap-6">
+    <div className="flex w-full min-w-0 flex-col gap-5 sm:gap-6">
       <FadeIn className="flex items-start gap-3">
         <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
           <Bell className="size-5" />
@@ -212,11 +282,7 @@ export default function NotificationsClientPage() {
             onClick={() => void markAllRead()}
             disabled={markingAll}
           >
-            {markingAll ? (
-              <Loader2 className="animate-spin" />
-            ) : (
-              <CheckCheck />
-            )}
+            <CheckCheck />
             <span className="hidden sm:inline">Mark all read</span>
             <span className="sm:hidden">Read all</span>
           </Button>
@@ -240,22 +306,52 @@ export default function NotificationsClientPage() {
             <CardTitle className="flex items-center gap-2">
               Updates
               {unreadCount > 0 && <Badge>{unreadCount} new</Badge>}
+              {unreadFriendRequestCount > 0 && (
+                <Badge variant="destructive">
+                  {unreadFriendRequestCount}{" "}
+                  {unreadFriendRequestCount === 1
+                    ? "friend request"
+                    : "friend requests"}
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" /> Loading notifications…
+              <div className="divide-y" role="status" aria-label="Loading notifications">
+                {Array.from({ length: 4 }, (_, index) => (
+                  <div
+                    key={index}
+                    className="flex items-start gap-3 py-4"
+                    aria-hidden="true"
+                  >
+                    <Skeleton className="size-8 shrink-0 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                      <Skeleton className="h-3 w-24" />
+                    </div>
+                    <Skeleton className="size-7 shrink-0 rounded-lg" />
+                  </div>
+                ))}
+                <span className="sr-only">Loading notifications</span>
               </div>
             ) : notifications.length ? (
               <div className="divide-y">
                 {notifications.map((notification) => {
                   const copy = notificationText(notification);
+                  const isUnread = !notification.read_at;
+                  const isFriendRequest =
+                    notification.kind === "friend_request";
+                  const hasPendingRequest =
+                    isFriendRequest &&
+                    notification.request_id !== null &&
+                    pendingRequestIds.has(notification.request_id);
                   return (
                     <div
                       key={notification.id}
-                      className={`flex items-start gap-3 py-4 first:pt-0 last:pb-0 ${
-                        notification.read_at ? "" : "rounded-lg bg-primary/[0.035] px-2"
+                      className={`flex flex-wrap items-start gap-3 py-4 first:pt-0 last:pb-0 sm:flex-nowrap ${
+                        isUnread ? "rounded-lg bg-primary/[0.035] px-2" : ""
                       }`}
                     >
                       <Avatar size="default" className="mt-0.5">
@@ -266,52 +362,90 @@ export default function NotificationsClientPage() {
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">{copy.title}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-medium">{copy.title}</p>
+                          {isFriendRequest && (
+                            <Badge
+                              variant={isUnread ? "default" : "outline"}
+                              className="h-5 px-1.5 text-[10px]"
+                            >
+                              Friend request
+                            </Badge>
+                          )}
+                          {isUnread && (
+                            <Badge
+                              variant="destructive"
+                              className="h-5 px-1.5 text-[10px]"
+                            >
+                              New
+                            </Badge>
+                          )}
+                        </div>
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {copy.detail}
                         </p>
                         <p className="mt-1.5 text-[11px] text-muted-foreground">
                           {new Date(notification.created_at).toLocaleString()}
                         </p>
-                        {notification.kind === "friend_request" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            nativeButton={false}
-                            render={<Link href="/friends#friend-requests" />}
-                            className="mt-2"
-                          >
-                            View request
-                          </Button>
-                        )}
                       </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        {!notification.read_at && (
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            title="Mark as read"
-                            aria-label="Mark notification as read"
-                            disabled={busyId === notification.id}
-                            onClick={() => void markRead(notification)}
-                          >
-                            {busyId === notification.id ? (
-                              <Loader2 className="animate-spin" />
-                            ) : (
+                      <div
+                        className={`flex shrink-0 flex-wrap items-center justify-end gap-2 ${
+                          hasPendingRequest ? "w-full sm:w-auto" : ""
+                        }`}
+                      >
+                        {hasPendingRequest && (
+                          <>
+                            <Button
+                              size="lg"
+                              disabled={busyId === notification.id || !userId}
+                              onClick={() =>
+                                void respondToRequest(notification, "accepted")
+                              }
+                            >
                               <Check />
-                            )}
-                          </Button>
+                              Accept
+                            </Button>
+                            <Button
+                              size="lg"
+                              variant="outline"
+                              disabled={busyId === notification.id || !userId}
+                              onClick={() =>
+                                void respondToRequest(notification, "declined")
+                              }
+                            >
+                              <X />
+                              Decline
+                            </Button>
+                          </>
                         )}
-                        <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          title="Delete notification"
-                          aria-label="Delete notification"
-                          disabled={busyId === notification.id}
-                          onClick={() => void removeNotification(notification)}
-                        >
-                          <Trash2 />
-                        </Button>
+                        {!isFriendRequest && (
+                          <>
+                            {!notification.read_at && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                title="Mark as read"
+                                aria-label="Mark notification as read"
+                                disabled={busyId === notification.id}
+                                onClick={() => void markRead(notification)}
+                              >
+                                <Check />
+                              </Button>
+                            )}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title="Delete notification"
+                              aria-label="Delete notification"
+                              disabled={busyId === notification.id}
+                              onClick={() =>
+                                void removeNotification(notification)
+                              }
+                            >
+                              <Trash2 />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   );

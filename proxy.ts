@@ -4,7 +4,12 @@ import { NextResponse, type NextRequest } from "next/server";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-const PUBLIC_ROUTES = new Set(["/login", "/register"]);
+const PUBLIC_ROUTES = new Set([
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+]);
 
 function redirectTo(request: NextRequest, pathname: string) {
   const response = NextResponse.redirect(new URL(pathname, request.url));
@@ -53,7 +58,10 @@ export async function proxy(request: NextRequest) {
     return redirectResponse;
   }
 
-  if (authenticated && (isPublicRoute || isHome)) {
+  if (
+    authenticated &&
+    ((isPublicRoute && pathname !== "/reset-password") || isHome)
+  ) {
     const redirectResponse = redirectTo(request, "/tasks");
     response.cookies.getAll().forEach((cookie) => {
       redirectResponse.cookies.set(cookie);

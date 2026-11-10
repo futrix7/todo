@@ -8,8 +8,7 @@ import {
   Pencil,
   Save,
   SmilePlus,
-  ThumbsDown,
-  ThumbsUp,
+  Star,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,7 +17,7 @@ import { useAuth } from "@/lib/auth";
 import { shortLabel } from "@/lib/date-utils";
 import { longDateLabel } from "@/lib/date-utils";
 import { MOODS } from "@/lib/task-options";
-import type { DayEntry, DayRating } from "@/lib/types";
+import { getDayRatingScore, type DayEntry, type DayRating } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,25 +61,17 @@ import {
   saveDayEntry,
 } from "@/lib/supabase/task-data";
 import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
+import { PageLoadingSkeleton } from "@/components/page-loading-skeleton";
 
 const moodConfig = {
-  mood: { label: "Mood", color: "var(--chart-1)" },
+  rating: { label: "Day rating", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
 const distributionConfig = {
   count: { label: "Days", color: "var(--chart-2)" },
 } satisfies ChartConfig;
 
-const RATING_META: Record<DayRating, { label: string; className: string }> = {
-  up: {
-    label: "Up",
-    className: "border-primary/30 text-primary bg-primary/5",
-  },
-  down: {
-    label: "Down",
-    className: "border-primary/30 text-primary bg-primary/5",
-  },
-};
+const RATING_LABELS = ["Very hard", "Hard", "Okay", "Good", "Great"] as const;
 
 export default function DaysClientPage() {
   const { user } = useAuth();
@@ -144,24 +135,36 @@ export default function DaysClientPage() {
       };
     });
 
-  const chartData = [...entries].sort((a, b) => a.date.localeCompare(b.date)).map((e) => ({
-    day: shortLabel(e.date),
-    mood: e.mood,
+  const chartData = [...entries]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((entry) => ({
+      day: shortLabel(entry.date),
+      rating: getDayRatingScore(entry.rating),
+    }));
+
+  const distribution = [1, 2, 3, 4, 5].map((score) => ({
+    label: String(score),
+    count: entries.filter(
+      (entry) => getDayRatingScore(entry.rating) === score
+    ).length,
   }));
 
-  const distribution = MOODS.map((m) => ({
-    label: m.emoji,
-    count: entries.filter((e) => e.mood === m.value).length,
-  }));
-
-  const upDays = entries.filter((e) => e.rating === "up").length;
-  const downDays = entries.length - upDays;
   const avgMood = entries.length
     ? (entries.reduce((sum, e) => sum + e.mood, 0) / entries.length).toFixed(1)
     : "0";
+  const avgRating = entries.length
+    ? (
+        entries.reduce(
+          (sum, entry) => sum + getDayRatingScore(entry.rating),
+          0
+        ) / entries.length
+      ).toFixed(1)
+    : "0";
+  const ratingScore =
+    rating === undefined ? undefined : getDayRatingScore(rating);
 
   async function handleSave() {
-    if (mood === undefined || rating === undefined) {
+    if (!today || mood === undefined || rating === undefined) {
       toast.error("Choose a mood and a rating before saving.");
       return;
     }
@@ -211,16 +214,11 @@ export default function DaysClientPage() {
     loadedUserId !== user?.id &&
     !schemaUnavailable
   ) {
-    return (
-      <div className="flex min-h-48 items-center justify-center" role="status">
-        <SmilePlus className="size-6 animate-pulse text-primary" />
-        <span className="sr-only">Loading mood check-ins</span>
-      </div>
-    );
+    return <PageLoadingSkeleton label="Loading mood check-ins" variant="days" />;
   }
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-6">
+    <div className="flex flex-col gap-5 sm:gap-6">
       <Dialog
         open={resetConfirmationOpen}
         onOpenChange={setResetConfirmationOpen}
@@ -256,7 +254,7 @@ export default function DaysClientPage() {
       <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
         {/* Check-in */}
         <FadeIn className="lg:col-span-2">
-          <Card>
+          <Card className="rounded-2xl border-border/70 shadow-sm">
             <CardHeader>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
@@ -274,6 +272,8 @@ export default function DaysClientPage() {
                   <Badge variant="secondary">
                     <CheckCircle2 className="text-primary" /> Checked in
                   </Badge>
+                ) : todaysDraft ? (
+                  <Badge variant="outline">Unsaved changes</Badge>
                 ) : (
                   <Badge variant="outline">Not logged yet</Badge>
                 )}
@@ -332,27 +332,38 @@ export default function DaysClientPage() {
 
               {/* Rating */}
               <div className="flex flex-col gap-2">
-                <Label>How would you rate your day?</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Rate your day</Label>
+                  {ratingScore !== undefined && (
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {ratingScore}/5 · {RATING_LABELS[ratingScore - 1]}
+                    </span>
+                  )}
+                </div>
                 <ToggleGroup
-                  value={rating ? [rating] : []}
+                  value={ratingScore === undefined ? [] : [String(ratingScore)]}
                   onValueChange={(v) => {
-                    if (v[0]) updateDraft({ rating: v[0] as DayRating });
+                    const score = Number(v[0]);
+                    if (Number.isInteger(score) && score >= 1 && score <= 5) {
+                      updateDraft({ rating: score as DayRating });
+                    }
                   }}
                   variant="outline"
-                  className="w-full"
+                  className="w-full gap-1"
                 >
-                  <ToggleGroupItem
-                    value="up"
-                    className="h-9 flex-1 gap-2 aria-pressed:border-primary/50 aria-pressed:bg-primary/10 aria-pressed:text-primary sm:h-10"
-                  >
-                    <ThumbsUp /> Up
-                  </ToggleGroupItem>
-                  <ToggleGroupItem
-                    value="down"
-                    className="h-9 flex-1 gap-2 aria-pressed:border-primary/50 aria-pressed:bg-primary/10 aria-pressed:text-primary sm:h-10"
-                  >
-                    <ThumbsDown /> Down
-                  </ToggleGroupItem>
+                  {RATING_LABELS.map((label, index) => (
+                    <ToggleGroupItem
+                      key={label}
+                      value={String(index + 1)}
+                      aria-label={`${index + 1} out of 5: ${label}`}
+                      className="h-12 flex-1 flex-col gap-0.5 rounded-lg px-1 text-xs aria-pressed:border-primary/50 aria-pressed:bg-primary/10 aria-pressed:text-primary sm:h-14"
+                    >
+                      <span className="font-semibold">{index + 1}</span>
+                      <span className="text-[9px] leading-3 sm:text-[10px]">
+                        {label}
+                      </span>
+                    </ToggleGroupItem>
+                  ))}
                 </ToggleGroup>
               </div>
 
@@ -365,7 +376,7 @@ export default function DaysClientPage() {
                 </Button>
                 <Button
                   onClick={handleSave}
-                  disabled={mood === undefined || rating === undefined}
+                  disabled={!today || mood === undefined || rating === undefined}
                 >
                   <Save /> {todaysEntry ? "Update check-in" : "Save check-in"}
                 </Button>
@@ -376,7 +387,7 @@ export default function DaysClientPage() {
 
         {/* Summary */}
         <FadeIn delay={0.08}>
-          <Card className="h-full">
+          <Card className="h-full rounded-2xl border-border/70 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <CalendarDays className="size-4 text-primary" /> This month
@@ -418,15 +429,15 @@ export default function DaysClientPage() {
                 </div>
                 <div className="flex min-h-20 flex-col items-center rounded-lg border p-3">
                   <p className="flex h-7 items-center font-heading text-xl font-semibold text-primary tabular-nums">
-                    {upDays}
+                    {entries.length ? avgRating : "—"}
                   </p>
-                  <p className="mt-auto flex min-h-7 items-center text-[11px] leading-4 text-muted-foreground">Up days</p>
+                  <p className="mt-auto flex min-h-7 items-center text-[11px] leading-4 text-muted-foreground">Avg rating</p>
                 </div>
                 <div className="flex min-h-20 flex-col items-center rounded-lg border p-3">
                   <p className="flex h-7 items-center font-heading text-xl font-semibold text-primary tabular-nums">
-                    {downDays}
+                    {entries.length}
                   </p>
-                  <p className="mt-auto flex min-h-7 items-center text-[11px] leading-4 text-muted-foreground">Down days</p>
+                  <p className="mt-auto flex min-h-7 items-center text-[11px] leading-4 text-muted-foreground">Check-ins</p>
                 </div>
               </div>
 
@@ -435,11 +446,11 @@ export default function DaysClientPage() {
         </FadeIn>
       </div>
 
-      {/* Mood graph */}
+      {/* Rating graph */}
       <FadeIn delay={0.1}>
-        <Card>
+        <Card className="rounded-2xl border-border/70 shadow-sm">
           <CardHeader>
-            <CardTitle>Mood over time</CardTitle>
+            <CardTitle>Day rating over time</CardTitle>
           </CardHeader>
           <CardContent className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-3">
             <div className="min-w-0 lg:col-span-2">
@@ -458,7 +469,6 @@ export default function DaysClientPage() {
                     <YAxis
                       domain={[1, 5]}
                       ticks={[1, 2, 3, 4, 5]}
-                      tickFormatter={(v) => MOODS[v - 1]?.emoji ?? ""}
                       tickLine={false}
                       axisLine={false}
                       width={32}
@@ -466,7 +476,7 @@ export default function DaysClientPage() {
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Area
                       type="monotone"
-                      dataKey="mood"
+                      dataKey="rating"
                       stroke="var(--chart-1)"
                       strokeWidth={2.5}
                       fill="var(--chart-1)"
@@ -478,7 +488,7 @@ export default function DaysClientPage() {
                 </ChartContainer>
               ) : (
                 <div className="flex h-[210px] items-center justify-center rounded-xl border border-dashed text-center text-sm text-muted-foreground sm:h-[260px]">
-                  Save your first daily check-in to see your mood trend.
+                  Save your first daily check-in to see your day-rating trend.
                 </div>
               )}
             </div>
@@ -506,7 +516,7 @@ export default function DaysClientPage() {
                 </ChartContainer>
               ) : (
                 <div className="flex h-[210px] items-center justify-center text-center text-sm text-muted-foreground sm:h-[260px]">
-                  Your mood distribution will appear after your first check-in.
+                  Your rating distribution will appear after your first check-in.
                 </div>
               )}
             </div>
@@ -516,7 +526,7 @@ export default function DaysClientPage() {
 
       {/* Recent check-ins */}
       <FadeIn delay={0.14}>
-        <Card>
+        <Card className="rounded-2xl border-border/70 shadow-sm">
           <CardHeader>
             <CardTitle>Recent check-ins</CardTitle>
           </CardHeader>
@@ -529,8 +539,8 @@ export default function DaysClientPage() {
                 )
                 .slice(0, 6)
                 .map((entry, i) => {
-                  const meta = RATING_META[entry.rating];
                   const emoji = MOODS.find((m) => m.value === entry.mood);
+                  const score = getDayRatingScore(entry.rating);
                   return (
                     <motion.li
                       key={entry.id}
@@ -557,13 +567,12 @@ export default function DaysClientPage() {
                                 )
                               : "Time unavailable"}
                           </span>
-                          <Badge variant="outline" className={meta.className}>
-                            {entry.rating === "up" ? (
-                              <ThumbsUp />
-                            ) : (
-                              <ThumbsDown />
-                            )}
-                            {meta.label}
+                          <Badge
+                            variant="outline"
+                            className="border-primary/30 bg-primary/5 text-primary"
+                          >
+                            <Star />
+                            {score}/5 · {RATING_LABELS[score - 1]}
                           </Badge>
                         </div>
                         <p className="mt-0.5 text-sm text-muted-foreground">

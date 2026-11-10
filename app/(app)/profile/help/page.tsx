@@ -52,7 +52,7 @@ const SHORTCUTS = [
 
 export default function HelpPage() {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 sm:gap-6">
+    <div className="flex w-full min-w-0 flex-col gap-5 sm:gap-6">
       <FadeIn className="flex items-center gap-3">
         <Link
           href="/profile"

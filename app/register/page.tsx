@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, MailCheck, UserPlus } from "lucide-react";
+import { MailCheck, UserPlus } from "lucide-react";
 
 import { isSupabaseConfigured, useAuth } from "@/lib/auth";
 import { AuthLayout } from "@/components/auth-layout";
@@ -191,7 +191,7 @@ export default function RegisterPage() {
             disabled={loading || !isSupabaseConfigured}
             className="mt-1"
           >
-            {loading ? <Loader2 className="animate-spin" /> : <UserPlus />}
+            <UserPlus />
             {loading ? "Creating account…" : "Create account"}
           </Button>
         </form>

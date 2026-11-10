@@ -6,6 +6,7 @@ export interface Task {
   id: string;
   title: string;
   notes?: string;
+  groupId?: string;
   completed: boolean;
   priority: Priority;
   category: string;
@@ -26,6 +27,12 @@ export interface Task {
   createdAt: string;
 }
 
+export interface TaskGroup {
+  id: string;
+  name: string;
+  icon?: string;
+}
+
 export interface TaskCompletion {
   taskId: string;
   /** yyyy-MM-dd in the user's local timezone */
@@ -33,7 +40,13 @@ export interface TaskCompletion {
   completedAt: string;
 }
 
-export type DayRating = "up" | "down";
+export type DayRating = 1 | 2 | 3 | 4 | 5 | "up" | "down";
+
+export function getDayRatingScore(rating: DayRating): 1 | 2 | 3 | 4 | 5 {
+  if (rating === "up") return 5;
+  if (rating === "down") return 1;
+  return rating;
+}
 
 export interface DayEntry {
   id: string;

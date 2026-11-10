@@ -9,7 +9,6 @@ import {
   CircleCheck,
   Database,
   KeyRound,
-  Loader2,
   Monitor,
   Moon,
   Palette,
@@ -46,6 +45,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { FadeIn } from "@/components/motion-fade";
 import { useMounted } from "@/lib/use-local-storage";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function initials(name: string) {
   return name
@@ -228,7 +228,7 @@ export default function SettingsPage() {
   ] as const;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 sm:gap-6">
+    <div className="flex w-full min-w-0 flex-col gap-4 sm:gap-6">
       <FadeIn className="flex items-center gap-3">
         <Button
           variant="ghost"
@@ -418,9 +418,8 @@ export default function SettingsPage() {
                 role="status"
                 aria-live="polite"
               >
-                <span className="flex size-14 items-center justify-center rounded-full bg-destructive/10 text-destructive">
-                  <Loader2 className="size-7 animate-spin" />
-                </span>
+                <Skeleton className="h-14 w-14 rounded-full" aria-hidden="true" />
+                <Skeleton className="h-4 w-44" aria-hidden="true" />
                 <p className="text-sm font-medium">Deleting your app data…</p>
               </motion.div>
             ) : clearDataStage === "success" ? (

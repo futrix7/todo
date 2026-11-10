@@ -1,7 +1,7 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { PageLoadingSkeleton } from "@/components/page-loading-skeleton";
 
 /**
  * The server Proxy is the access-control boundary. This guard mirrors the
@@ -28,8 +28,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!authReady) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      <div className="min-h-screen bg-background p-4 sm:p-8">
+        <PageLoadingSkeleton label="Verifying your session" />
       </div>
     );
   }

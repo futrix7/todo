@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Award,
+  AtSign,
   BadgeCheck,
   BarChart3,
   BookOpen,
@@ -15,7 +16,6 @@ import {
   Flame,
   LifeBuoy,
   ListChecks,
-  Loader2,
   LockKeyhole,
   LogOut,
   Mountain,
@@ -50,6 +50,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { FadeIn, EASE } from "@/components/motion-fade";
+import { PageLoadingSkeleton } from "@/components/page-loading-skeleton";
 import { MetricCard } from "@/components/metric-card";
 import { useTodayKey } from "@/lib/use-local-storage";
 import type { DayEntry, Task, TaskCompletion } from "@/lib/types";
@@ -62,6 +63,10 @@ import {
   loadTasks,
 } from "@/lib/supabase/task-data";
 import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
+import {
+  claimPermanentUsername,
+  loadOwnUsername,
+} from "@/lib/supabase/social-data";
 
 
 const LINKS = [
@@ -112,10 +117,37 @@ export default function ProfilePage() {
   const [editOpen, setEditOpen] = React.useState(false);
   const [logoutOpen, setLogoutOpen] = React.useState(false);
   const [savingProfile, setSavingProfile] = React.useState(false);
+  const [username, setUsername] = React.useState("");
+  const [usernameLocked, setUsernameLocked] = React.useState(false);
+  const [usernameOwnerId, setUsernameOwnerId] = React.useState<string | null>(null);
+  const [savingUsername, setSavingUsername] = React.useState(false);
   const [name, setName] = React.useState(user?.name ?? "");
   const [bio, setBio] = React.useState(user?.bio ?? "");
   const [loadedUserId, setLoadedUserId] = React.useState<string | null>(null);
   const [showAchievementTips, setShowAchievementTips] = React.useState(false);
+  const usernameLoaded = Boolean(user?.id && usernameOwnerId === user.id);
+
+  React.useEffect(() => {
+    if (!user?.id) return;
+
+    let active = true;
+    loadOwnUsername(user.id)
+      .then((profileUsername) => {
+        if (!active) return;
+        setUsername(profileUsername.username);
+        setUsernameLocked(profileUsername.username_locked);
+        setUsernameOwnerId(user.id);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        reportError(error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [reportError, user?.id]);
+
   const activity = React.useMemo(
     () => getTaskActivity(tasks, completions, today),
     [tasks, completions, today]
@@ -203,6 +235,45 @@ export default function ProfilePage() {
     }
   }
 
+  async function saveUsername() {
+    const normalizedUsername = username.trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,20}$/.test(normalizedUsername)) {
+      toast.error("Use 3–20 lowercase letters, numbers, or underscores.");
+      return;
+    }
+    if (!user?.id || !usernameLoaded) {
+      toast.error("Your profile is still loading. Try again shortly.");
+      return;
+    }
+    if (usernameLocked) {
+      toast.error("Your username is permanent and cannot be changed.");
+      return;
+    }
+
+    setSavingUsername(true);
+    try {
+      const savedUsername = await claimPermanentUsername(normalizedUsername);
+      setUsername(savedUsername);
+      setUsernameLocked(true);
+      toast.success(`@${savedUsername} is now your permanent username.`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Could not save your username.";
+      if (message.includes("username_taken")) {
+        toast.error("That username is already taken.");
+      } else if (message.includes("username_permanent")) {
+        toast.error("Your username is permanent and cannot be changed.");
+        setUsernameLocked(true);
+      } else if (message.includes("username_invalid")) {
+        toast.error("Use 3–20 lowercase letters, numbers, or underscores.");
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setSavingUsername(false);
+    }
+  }
+
   React.useEffect(() => {
     if (!isSupabaseConfigured || !user?.id || schemaUnavailable || isTaskDataSchemaUnavailable()) {
       return;
@@ -210,15 +281,15 @@ export default function ProfilePage() {
 
     const userId = user.id;
     let active = true;
-    loadTasks(userId)
-      .then(async (remoteTasks) => {
+    Promise.all([
+      loadTasks(userId),
+      loadCompletions(userId),
+      loadDayEntries(userId),
+    ])
+      .then(([remoteTasks, remoteCompletions, remoteDays]) => {
         if (!active) return;
         setTasks(remoteTasks);
-        const remoteCompletions = await loadCompletions(userId);
-        if (!active) return;
         setCompletions(remoteCompletions);
-        const remoteDays = await loadDayEntries(userId);
-        if (!active) return;
         setDayEntries(remoteDays);
         setLoadedUserId(userId);
       })
@@ -240,12 +311,7 @@ export default function ProfilePage() {
     !schemaUnavailable &&
     !isTaskDataSchemaUnavailable()
   ) {
-    return (
-      <div className="flex min-h-48 items-center justify-center" role="status">
-        <Loader2 className="size-6 animate-spin text-primary" />
-        <span className="sr-only">Loading your profile</span>
-      </div>
-    );
+    return <PageLoadingSkeleton label="Loading your profile" variant="profile" />;
   }
 
   const joined = user?.createdAt
@@ -282,6 +348,17 @@ export default function ProfilePage() {
                 </h2>
               </div>
               <p className="mt-0.5 truncate text-sm text-white/75">{user?.email}</p>
+              {username && (
+                <p className="mt-1 flex items-center gap-1 text-xs text-white/80">
+                  <AtSign className="size-3" />
+                  {username}
+                  {usernameLocked && (
+                    <span className="ml-1 rounded-full bg-white/15 px-2 py-0.5 text-[10px]">
+                      Permanent
+                    </span>
+                  )}
+                </p>
+              )}
             </div>
             <Button
               variant="ghost"
@@ -500,6 +577,52 @@ export default function ProfilePage() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="profile-username">Username</Label>
+              <div className="flex gap-2">
+                <div className="relative min-w-0 flex-1">
+                  <AtSign className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="profile-username"
+                    value={username}
+                    onChange={(event) =>
+                      setUsername(event.target.value.toLowerCase())
+                    }
+                    disabled={usernameLocked || savingUsername || !usernameLoaded}
+                    placeholder="yourname"
+                    maxLength={20}
+                    autoComplete="username"
+                    className="pl-9"
+                    aria-describedby="profile-username-help"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant={usernameLocked ? "secondary" : "outline"}
+                  onClick={() => void saveUsername()}
+                  disabled={
+                    usernameLocked ||
+                    savingUsername ||
+                    !usernameLoaded ||
+                    !username.trim()
+                  }
+                >
+                  {usernameLocked
+                    ? "Permanent"
+                    : savingUsername
+                      ? "Saving…"
+                      : "Set username"}
+                </Button>
+              </div>
+              <p
+                id="profile-username-help"
+                className="text-xs leading-relaxed text-muted-foreground"
+              >
+                {usernameLocked
+                  ? "Your username is permanent and can’t be changed."
+                  : "Choose carefully: usernames are 3–20 lowercase letters, numbers, or underscores and can only be set once."}
+              </p>
+            </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="profile-name">Name</Label>
               <Input

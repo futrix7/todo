@@ -1,5 +1,5 @@
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
-import type { DayEntry, Task, TaskCompletion } from "@/lib/types";
+import type { DayEntry, Task, TaskCompletion, TaskGroup } from "@/lib/types";
 
 type TaskRow = { data: unknown };
 type CompletionRow = {
@@ -11,6 +11,11 @@ type DayEntryRow = {
   data: unknown;
   created_at: string;
   updated_at: string;
+};
+type TaskGroupRow = {
+  id: string;
+  name: string;
+  icon?: string | null;
 };
 
 let taskDataSchemaUnavailable = false;
@@ -61,6 +66,7 @@ function isTask(value: unknown): value is Task {
     typeof task.id === "string" &&
     typeof task.title === "string" &&
     (task.notes === undefined || typeof task.notes === "string") &&
+    (task.groupId === undefined || typeof task.groupId === "string") &&
     typeof task.completed === "boolean" &&
     (task.priority === "low" ||
       task.priority === "medium" ||
@@ -93,7 +99,12 @@ function isDayEntry(value: unknown): value is DayEntry {
     typeof entry.mood === "number" &&
     Number.isFinite(entry.mood) &&
     typeof entry.note === "string" &&
-    (entry.rating === "up" || entry.rating === "down") &&
+    ((typeof entry.rating === "number" &&
+      Number.isInteger(entry.rating) &&
+      entry.rating >= 1 &&
+      entry.rating <= 5) ||
+      entry.rating === "up" ||
+      entry.rating === "down") &&
     (entry.checkedInAt === undefined ||
       typeof entry.checkedInAt === "string")
   );
@@ -115,6 +126,87 @@ export async function loadTasks(userId: string): Promise<Task[]> {
     throw new Error("Supabase returned a task with an invalid data shape.");
   }
   return taskData.filter(isTask);
+}
+
+function isTaskGroup(value: unknown): value is TaskGroup {
+  if (!value || typeof value !== "object") return false;
+  const group = value as Partial<TaskGroup>;
+  return (
+    typeof group.id === "string" &&
+    typeof group.name === "string" &&
+    (group.icon === undefined || typeof group.icon === "string")
+  );
+}
+
+export async function loadTaskGroups(userId: string): Promise<TaskGroup[]> {
+  const { data, error } = await requireSupabase()
+    .from("task_groups")
+    .select("id,name,icon")
+    .eq("user_id", userId)
+    .order("name");
+  if (error) {
+    isMissingTaskDataSchemaError(error);
+    throw error;
+  }
+
+  const groups = (data ?? []) as TaskGroupRow[];
+  if (groups.some((group) => !isTaskGroup(group))) {
+    throw new Error("Supabase returned a task group in an invalid format.");
+  }
+  return groups.map((group) => ({ ...group, icon: group.icon ?? "file" }));
+}
+
+export async function saveTaskGroup(
+  userId: string,
+  name: string,
+  icon = "file"
+): Promise<TaskGroup> {
+  const { data, error } = await requireSupabase()
+    .from("task_groups")
+    .insert({ user_id: userId, name: name.trim(), icon })
+    .select("id,name,icon")
+    .single();
+  if (error) {
+    isMissingTaskDataSchemaError(error);
+    throw error;
+  }
+  if (!isTaskGroup(data)) {
+    throw new Error("Supabase returned a task group in an invalid format.");
+  }
+  return data;
+}
+
+export async function updateTaskGroup(
+  userId: string,
+  groupId: string,
+  name: string,
+  icon: string
+): Promise<TaskGroup> {
+  const { data, error } = await requireSupabase()
+    .from("task_groups")
+    .update({ name: name.trim(), icon })
+    .eq("user_id", userId)
+    .eq("id", groupId)
+    .select("id,name,icon")
+    .single();
+  if (error) {
+    isMissingTaskDataSchemaError(error);
+    throw error;
+  }
+  if (!isTaskGroup(data)) {
+    throw new Error("Supabase returned a task group in an invalid format.");
+  }
+  return data;
+}
+
+export async function removeTaskGroup(groupId: string): Promise<void> {
+  const { error } = await requireSupabase().rpc("remove_task_group", {
+    p_group_id: groupId,
+  });
+  if (error) {
+    isMissingTaskDataSchemaError(error);
+    throw error;
+  }
 }
 
 export async function saveTask(userId: string, task: Task): Promise<void> {

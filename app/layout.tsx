@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,14 @@ export const metadata: Metadata = {
   },
   description:
     "A simple todo app with advanced scheduling, streaks, daily mood check-ins and analytics.",
+};
+
+export const viewport: Viewport = {
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#131313" },
+  ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

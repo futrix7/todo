@@ -30,7 +30,12 @@ import {
 import { useAuth } from "@/lib/auth";
 import { dateKey, shortLabel } from "@/lib/date-utils";
 import { getActivityStreaks } from "@/lib/task-activity";
-import type { DayEntry, Task, TaskCompletion } from "@/lib/types";
+import {
+  getDayRatingScore,
+  type DayEntry,
+  type Task,
+  type TaskCompletion,
+} from "@/lib/types";
 import { useTodayKey } from "@/lib/use-local-storage";
 import {
   isTaskDataSchemaUnavailable,
@@ -40,13 +45,7 @@ import {
   loadTasks,
 } from "@/lib/supabase/task-data";
 import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { PageLoadingSkeleton } from "@/components/page-loading-skeleton";
 import {
   ChartContainer,
   ChartLegend,
@@ -62,8 +61,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FadeIn } from "@/components/motion-fade";
-import { MetricCard } from "@/components/metric-card";
 
 const RANGE_OPTIONS = [
   { value: "7", label: "Last 7 days" },
@@ -83,10 +80,6 @@ const activityConfig = {
   created: { label: "Created", color: "var(--chart-2)" },
 } satisfies ChartConfig;
 
-const hourlyConfig = {
-  minutes: { label: "Focus minutes", color: "var(--chart-1)" },
-} satisfies ChartConfig;
-
 const weeklyConfig = {
   thisWeek: { label: "This week", color: "var(--chart-1)" },
   lastWeek: { label: "Last week", color: "var(--chart-2)" },
@@ -94,6 +87,10 @@ const weeklyConfig = {
 
 const moodConfig = {
   mood: { label: "Mood", color: "var(--chart-1)" },
+} satisfies ChartConfig;
+
+const dayRatingConfig = {
+  rating: { label: "Daily rating", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
 function getDateKeys(today: string, count: number) {
@@ -113,7 +110,7 @@ function displayDuration(minutes: number) {
 
 function EmptyChart({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-[210px] items-center justify-center px-4 text-center text-sm text-muted-foreground sm:h-[260px]">
+    <div className="flex h-[320px] items-center justify-center px-4 text-center text-sm text-muted-foreground">
       {children}
     </div>
   );
@@ -137,15 +134,15 @@ export default function AnalyticsClientPage() {
     if (schemaUnavailable || isTaskDataSchemaUnavailable()) return;
 
     let active = true;
-    loadTasks(userId)
-      .then(async (remoteTasks) => {
+    Promise.all([
+      loadTasks(userId),
+      loadCompletions(userId),
+      loadDayEntries(userId),
+    ])
+      .then(([remoteTasks, remoteCompletions, remoteDayEntries]) => {
         if (!active) return;
         setTasks(remoteTasks);
-        const remoteCompletions = await loadCompletions(userId);
-        if (!active) return;
         setCompletions(remoteCompletions);
-        const remoteDayEntries = await loadDayEntries(userId);
-        if (!active) return;
         setDayEntries(remoteDayEntries);
         setLoadedUserId(userId);
       })
@@ -237,24 +234,19 @@ export default function AnalyticsClientPage() {
     [dayEntries, dateSet]
   );
 
-  const focusData = React.useMemo(() => {
-    const hours = new Map<number, number>();
-    for (const completion of rangeCompletions) {
-      const task = taskById.get(completion.taskId);
-      if (!task?.startTime) continue;
-      const hour = Number(task.startTime.split(":")[0]);
-      if (!Number.isFinite(hour)) continue;
-      hours.set(hour, (hours.get(hour) ?? 0) + (task.duration ?? 0));
-    }
-    return [...hours.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([hour, minutes]) => ({
-        hour: new Date(2000, 0, 1, hour).toLocaleTimeString(undefined, {
-          hour: "numeric",
-        }),
-        minutes,
-      }));
-  }, [rangeCompletions, taskById]);
+  const dayRatingData = React.useMemo(() => {
+    const ratingByDate = new Map(
+      dayEntries
+        .filter((entry) => dateSet.has(entry.date))
+        .map((entry) => [entry.date, getDayRatingScore(entry.rating)])
+    );
+    return dates.flatMap((date) => {
+      const rating = ratingByDate.get(date);
+      return rating
+        ?         [{ date, day: shortLabel(date), rating }]
+        : [];
+    });
+  }, [dates, dateSet, dayEntries]);
 
   const weeklyComparison = React.useMemo(() => {
     if (!today) return [];
@@ -347,37 +339,36 @@ export default function AnalyticsClientPage() {
     loadedUserId !== user?.id &&
     !schemaUnavailable
   ) {
-    return (
-      <div className="flex min-h-48 items-center justify-center" role="status">
-        <Activity className="size-6 animate-pulse text-primary" />
-        <span className="sr-only">Loading analytics</span>
-      </div>
-    );
+    return <PageLoadingSkeleton label="Loading analytics" variant="analytics" />;
   }
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-6">
-      <FadeIn className="flex flex-wrap items-center justify-between gap-3">
+    <div className="-mx-3 -my-4 flex min-h-dvh w-[calc(100%+1.5rem)] min-w-0 flex-col sm:-mx-4 sm:-my-6 sm:w-[calc(100%+2rem)] md:-mx-6 md:-my-8 md:w-[calc(100%+3rem)] lg:-mx-8 lg:-my-6 lg:w-[calc(100%+4rem)]">
+      <header className="flex min-h-20 flex-wrap items-center justify-between gap-3 border-b px-3 pb-3 pt-5 sm:px-4 md:px-6 lg:px-8">
         <div className="flex items-center gap-3">
           <Link
             href="/profile"
             aria-label="Back to profile"
-            className="inline-flex size-9 items-center justify-center rounded-xl border transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="inline-flex size-9 shrink-0 items-center justify-center border transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           >
             <ArrowLeft className="size-4" />
           </Link>
-          <h2 className="font-heading text-xl font-semibold tracking-tight">
-            Analytics
-          </h2>
+          <div>
+            <h1 className="font-heading text-xl font-semibold leading-tight tracking-tight sm:text-2xl">
+              Analytics
+            </h1>
+            <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
+              Task trends, check-ins, and focus time.
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <BarChart3 className="hidden size-4 text-muted-foreground sm:block" />
+        <div className="ml-auto flex items-center gap-2">
           <Select
             value={range}
             onValueChange={(value) => setRange(value ?? "14")}
             items={RANGE_OPTIONS}
           >
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-36">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -389,38 +380,49 @@ export default function AnalyticsClientPage() {
             </SelectContent>
           </Select>
         </div>
-      </FadeIn>
+      </header>
 
-      <div className="grid min-w-0 grid-cols-2 items-stretch gap-2.5 sm:gap-4 lg:grid-cols-4">
+      <section
+        aria-label="Analytics summary"
+        className="grid grid-cols-2 border-b sm:grid-cols-4"
+      >
         {kpis.map((kpi, index) => {
+          const Icon = kpi.icon;
           return (
-            <MetricCard
+            <div
               key={kpi.label}
-              label={kpi.label}
-              value={kpi.value}
-              detail={kpi.detail}
-              icon={kpi.icon}
-              delay={index * 0.05}
-            />
+              className={`flex min-h-24 items-start gap-3 px-3 py-3 sm:px-4 md:px-6 lg:px-8 ${
+                index % 2 === 0 ? "border-r sm:border-r-0" : ""
+              } ${index < 2 ? "border-b sm:border-b-0" : ""} ${
+                index < 3 ? "sm:border-r" : ""
+              }`}
+            >
+              <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">{kpi.label}</p>
+                <p className="mt-1 font-heading text-2xl font-semibold leading-tight tabular-nums">
+                  {kpi.value}
+                </p>
+                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                  {kpi.detail}
+                </p>
+              </div>
+            </div>
           );
         })}
-      </div>
+      </section>
 
-      <FadeIn delay={0.1} className="min-w-0">
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="size-4 text-primary" /> Task activity
-              </CardTitle>
-              <Badge variant="outline">Last {range} days</Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
+      <div className="grid min-w-0 flex-1 grid-cols-1 sm:grid-cols-2">
+        <section className="min-w-0 border-b px-3 py-3 sm:border-r sm:px-4 md:px-6 lg:px-8">
+          <div className="mb-2 flex items-center gap-2">
+            <Activity className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold">Task activity</h2>
+            <span className="ml-auto text-xs text-muted-foreground">{range} days</span>
+          </div>
             {rangeCompletions.length || tasks.some((task) => dates.includes(task.createdAt)) ? (
               <ChartContainer
                 config={activityConfig}
-                className="h-[210px] w-full sm:h-[280px]"
+                className="h-[320px] w-full sm:h-[360px]"
               >
                 <AreaChart data={activityData} margin={{ left: 4, right: 8, top: 8 }}>
                   <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -435,17 +437,73 @@ export default function AnalyticsClientPage() {
             ) : (
               <EmptyChart>No task activity recorded in this date range.</EmptyChart>
             )}
-          </CardContent>
-        </Card>
-      </FadeIn>
+        </section>
 
-      <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-3">
-        <FadeIn delay={0.12} className="min-w-0">
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle>Completions by category</CardTitle>
-            </CardHeader>
-            <CardContent>
+        <section className="min-w-0 border-b px-3 py-3 sm:px-4 md:px-6 lg:px-8">
+          <div className="mb-2 flex items-center gap-2">
+            <TrendingUp className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold">Day ratings</h2>
+            <span className="ml-auto text-xs text-muted-foreground">{range} days</span>
+          </div>
+            {dayEntries.some((entry) => dateSet.has(entry.date)) ? (
+              <ChartContainer
+                config={dayRatingConfig}
+                className="h-[320px] w-full sm:h-[360px]"
+              >
+                <BarChart
+                  data={dayRatingData}
+                  margin={{ left: 4, right: 8, top: 8 }}
+                >
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="day"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    minTickGap={28}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    domain={[1, 5]}
+                    ticks={[1, 2, 3, 4, 5]}
+                    tickLine={false}
+                    axisLine={false}
+                    width={38}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value) => [
+                          `${Number(value)}/5`,
+                          "Rating",
+                        ]}
+                      />
+                    }
+                  />
+                  <Bar dataKey="rating" radius={[5, 5, 5, 5]} barSize={18}>
+                    {dayRatingData.map((entry) => (
+                      <Cell
+                        key={entry.date}
+                        fill={
+                          entry.rating >= 3
+                            ? "var(--chart-1)"
+                            : "var(--chart-2)"
+                        }
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+            ) : (
+              <EmptyChart>No day ratings recorded in this date range.</EmptyChart>
+            )}
+        </section>
+
+        <section className="min-w-0 border-b px-3 py-3 sm:border-r sm:px-4 md:px-6 lg:px-8">
+          <div className="mb-2 flex items-center gap-2">
+            <BarChart3 className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold">Completions by category</h2>
+          </div>
               {categoryData.length ? (
                 <ChartContainer
                   config={Object.fromEntries(
@@ -454,7 +512,7 @@ export default function AnalyticsClientPage() {
                       { label: item.name, color: item.fill },
                     ])
                   )}
-                  className="mx-auto aspect-square max-h-[220px] w-full sm:max-h-[260px]"
+                  className="mx-auto h-[320px] w-full max-w-[420px] sm:h-[360px]"
                 >
                   <PieChart>
                     <ChartTooltip content={<ChartTooltipContent nameKey="name" hideLabel />} />
@@ -469,20 +527,15 @@ export default function AnalyticsClientPage() {
               ) : (
                 <EmptyChart>No categorized task completions in this date range.</EmptyChart>
               )}
-            </CardContent>
-          </Card>
-        </FadeIn>
+        </section>
 
-        <FadeIn delay={0.16} className="min-w-0 lg:col-span-2">
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Smile className="size-4 text-primary" /> Mood check-ins
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+        <section className="min-w-0 border-b px-3 py-3 sm:px-4 md:px-6 lg:px-8">
+          <div className="mb-2 flex items-center gap-2">
+            <Smile className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold">Mood check-ins</h2>
+          </div>
               {moodData.length ? (
-                <ChartContainer config={moodConfig} className="h-[210px] w-full sm:h-[260px]">
+                <ChartContainer config={moodConfig} className="h-[320px] w-full sm:h-[360px]">
                   <LineChart data={moodData} margin={{ left: 4, right: 8, top: 8 }}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" />
                     <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} />
@@ -494,47 +547,15 @@ export default function AnalyticsClientPage() {
               ) : (
                 <EmptyChart>No mood check-ins recorded in this date range.</EmptyChart>
               )}
-            </CardContent>
-          </Card>
-        </FadeIn>
-      </div>
+        </section>
 
-      <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-2">
-        <FadeIn delay={0.14} className="min-w-0">
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="size-4 text-primary" /> Completed focus time by hour
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {focusData.length ? (
-                <ChartContainer config={hourlyConfig} className="h-[200px] w-full sm:h-[240px]">
-                  <BarChart data={focusData} margin={{ left: 4, right: 8, top: 8 }}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="hour" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
-                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="minutes" fill="var(--chart-1)" radius={[6, 6, 0, 0]} barSize={18} />
-                  </BarChart>
-                </ChartContainer>
-              ) : (
-                <EmptyChart>No completed tasks with a scheduled time in this date range.</EmptyChart>
-              )}
-            </CardContent>
-          </Card>
-        </FadeIn>
-
-        <FadeIn delay={0.18} className="min-w-0">
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="size-4 text-primary" /> Weekly comparison
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+        <section className="min-w-0 border-b px-3 py-3 sm:px-4 md:px-6 lg:px-8">
+          <div className="mb-2 flex items-center gap-2">
+            <TrendingUp className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold">Weekly comparison</h2>
+          </div>
               {hasWeeklyCompletions ? (
-                <ChartContainer config={weeklyConfig} className="h-[200px] w-full sm:h-[240px]">
+                <ChartContainer config={weeklyConfig} className="h-[320px] w-full sm:h-[360px]">
                   <BarChart data={weeklyComparison} margin={{ left: 4, right: 8, top: 8 }}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" />
                     <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
@@ -548,9 +569,7 @@ export default function AnalyticsClientPage() {
               ) : (
                 <EmptyChart>No task completions recorded yet.</EmptyChart>
               )}
-            </CardContent>
-          </Card>
-        </FadeIn>
+        </section>
       </div>
     </div>
   );

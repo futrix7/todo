@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   ChevronRight,
   Flame,
-  Loader2,
   TrendingUp,
 } from "lucide-react";
 
@@ -30,7 +29,7 @@ import {
 } from "@/lib/supabase/task-data";
 import { useAuth } from "@/lib/auth";
 import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
-import { Badge } from "@/components/ui/badge";
+import { PageLoadingSkeleton } from "@/components/page-loading-skeleton";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -52,126 +51,96 @@ const trendConfig = {
   created: { label: "Created", color: "var(--chart-3)" },
 } satisfies ChartConfig;
 
-const LEVELS = [
-  "bg-muted",
-  "bg-primary/25",
-  "bg-primary/45",
-  "bg-primary/65",
-  "bg-primary/90",
-];
+function getMonthCalendar(today: string) {
+  if (!today) return null;
 
-function levelClass(count: number) {
-  if (count === 0) return LEVELS[0];
-  if (count <= 1) return LEVELS[1];
-  if (count <= 3) return LEVELS[2];
-  if (count <= 5) return LEVELS[3];
-  return LEVELS[4];
+  const month = new Date(`${today}T12:00:00`);
+  month.setDate(1);
+  const year = month.getFullYear();
+  const monthIndex = month.getMonth();
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const days: ({ date: string; day: number } | null)[] = Array.from(
+    { length: (month.getDay() + 6) % 7 },
+    () => null
+  );
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(year, monthIndex, day, 12);
+    days.push({ date: dateKey(date), day });
+  }
+  while (days.length % 7 !== 0) days.push(null);
+
+  return {
+    label: month.toLocaleDateString(undefined, {
+      month: "long",
+      year: "numeric",
+    }),
+    days,
+  };
 }
 
-function Heatmap({
-  data,
+function StreakCalendar({
+  today,
+  activeDays,
 }: {
-  data: { date: string; count: number }[];
+  today: string;
+  activeDays: string[];
 }) {
-  const [flashingDates, setFlashingDates] = React.useState<string[]>([]);
-  const weeks: ({ date: string; count: number } | null)[][] = [];
-  let current: ({ date: string; count: number } | null)[] = [];
-
-  React.useEffect(() => {
-    let finishTimeout: number | undefined;
-    const startTimeout = window.setTimeout(() => {
-      const shuffledDates = [...data]
-        .sort(() => Math.random() - 0.5)
-        .slice(0, 6)
-        .map((cell) => cell.date);
-      setFlashingDates(shuffledDates);
-      finishTimeout = window.setTimeout(() => setFlashingDates([]), 2200);
-    }, 0);
-    return () => {
-      window.clearTimeout(startTimeout);
-      if (finishTimeout !== undefined) window.clearTimeout(finishTimeout);
-    };
-  }, [data]);
-
-  // pad the first week so columns align to weekdays
-  const firstDow = data[0]
-    ? (new Date(`${data[0].date}T12:00:00`).getDay() + 6) % 7
-    : 0;
-  for (let i = 0; i < firstDow; i++) current.push(null);
-
-  for (const cell of data) {
-    const dow = (new Date(`${cell.date}T12:00:00`).getDay() + 6) % 7;
-    if (dow === 0 && current.length) {
-      weeks.push(current);
-      current = [];
-    }
-    current.push(cell);
-  }
-  if (current.length) weeks.push(current);
+  const month = getMonthCalendar(today);
+  const activeDaySet = new Set(activeDays);
 
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <CardTitle className="flex items-center gap-2">
-              <CalendarCheck className="size-4 text-primary" /> Daily activity
-            </CardTitle>
-          </div>
-          <Badge variant="secondary" className="shrink-0 text-[10px]">
-            26 weeks
-          </Badge>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2">
+            <CalendarCheck className="size-4 text-primary" /> Streak calendar
+          </CardTitle>
+          {month && (
+            <span className="text-sm font-medium text-muted-foreground">
+              {month.label}
+            </span>
+          )}
         </div>
       </CardHeader>
       <CardContent className="min-w-0">
-        {!data.some((cell) => cell.count > 0) && (
-          <p className="mb-3 text-center text-xs text-muted-foreground">
-            Your check-ins, new tasks, and completions will appear here.
-          </p>
-        )}
-        <div className="flex w-full min-w-0 gap-1">
-          <div className="flex w-4 shrink-0 flex-col justify-between py-[1px] text-[8px] text-muted-foreground sm:w-5 sm:text-[9px]">
-            <span>Mon</span>
-            <span>Wed</span>
-            <span>Fri</span>
-          </div>
-          {weeks.map((week, wi) => (
-            <div key={wi} className="flex min-w-0 flex-1 flex-col gap-px">
-              {week.map((cell, ci) =>
-                cell ? (
-                  <motion.span
-                    key={cell.date}
-                    initial={{ opacity: 0, scale: 0.6 }}
-                    animate={
-                      flashingDates.includes(cell.date)
-                        ? { opacity: [1, 0.25, 1], scale: [1, 0.82, 1] }
-                        : { opacity: 1, scale: 1 }
-                    }
-                    transition={{
-                      duration: flashingDates.includes(cell.date) ? 0.7 : 0.3,
-                      repeat: flashingDates.includes(cell.date) ? 2 : 0,
-                      delay: Math.min((wi * 7 + ci) * 0.0015, 0.4),
-                      ease: EASE,
-                    }}
-                    title={`${cell.count} activit${cell.count === 1 ? "y" : "ies"} · ${shortLabel(cell.date)}`}
-                    className={cn(
-                      "aspect-square w-full rounded-[2px]",
-                      levelClass(cell.count)
-                    )}
-                  />
-                ) : (
-                  <span key={`pad-${ci}`} className="aspect-square w-full" />
-                )
-              )}
-            </div>
+        <div className="grid grid-cols-7 gap-1.5 text-center sm:gap-2">
+          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((weekday) => (
+            <span
+              key={weekday}
+              className="pb-1 text-xs font-medium text-muted-foreground"
+              aria-hidden="true"
+            >
+              {weekday}
+            </span>
           ))}
+          {month?.days.map((cell, index) => {
+            if (!cell) {
+              return <span key={`empty-${index}`} />;
+            }
+            const isStreakDay = activeDaySet.has(cell.date);
+            const isToday = cell.date === today;
+            return (
+              <span
+                key={cell.date}
+                title={`${shortLabel(cell.date)}${isStreakDay ? " · Streak day" : ""}`}
+                aria-label={`${shortLabel(cell.date)}${isStreakDay ? ", streak day" : ""}${isToday ? ", today" : ""}`}
+                className={cn(
+                  "flex aspect-square min-h-9 items-center justify-center rounded-md border text-sm tabular-nums",
+                  isStreakDay
+                    ? "border-primary bg-primary font-semibold text-primary-foreground"
+                    : "border-border bg-muted/30 text-muted-foreground",
+                  isToday && "ring-2 ring-primary ring-offset-2 ring-offset-card"
+                )}
+              >
+                {cell.day}
+              </span>
+            );
+          })}
         </div>
-        <div className="mt-2 flex items-center justify-end gap-1 text-[9px] text-muted-foreground">
-          <span className="mr-0.5">Fewer activities</span>
-          {LEVELS.map((level) => (
-            <span key={level} className={cn("size-2 rounded-[2px]", level)} />
-          ))}
-          <span className="ml-0.5">More activities</span>
+        <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+          <span className="size-4 rounded bg-primary" aria-hidden="true" />
+          <span>Streak day</span>
         </div>
       </CardContent>
     </Card>
@@ -231,22 +200,6 @@ export default function StreakPage() {
       ),
     [activity, allTasks, dayEntries, today]
   );
-  const activityByDate = React.useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const completion of activity) {
-      counts.set(
-        completion.completedOn,
-        (counts.get(completion.completedOn) ?? 0) + 1
-      );
-    }
-    for (const task of allTasks) {
-      counts.set(task.createdAt, (counts.get(task.createdAt) ?? 0) + 1);
-    }
-    for (const entry of dayEntries) {
-      counts.set(entry.date, (counts.get(entry.date) ?? 0) + 1);
-    }
-    return counts;
-  }, [activity, allTasks, dayEntries]);
   const completionCountsByDate = React.useMemo(() => {
     const counts = new Map<string, number>();
     for (const completion of activity) {
@@ -257,16 +210,6 @@ export default function StreakPage() {
     }
     return counts;
   }, [activity]);
-  const heatmapData = React.useMemo(() => {
-    if (!today) return [];
-    const currentDate = new Date(`${today}T12:00:00`);
-    return Array.from({ length: 182 }, (_, index) => {
-      const date = new Date(currentDate);
-      date.setDate(currentDate.getDate() - 181 + index);
-      const key = dateKey(date);
-      return { date: key, count: activityByDate.get(key) ?? 0 };
-    });
-  }, [today, activityByDate]);
   const completionSeries = React.useMemo(() => {
     if (!today) return [];
     const currentDate = new Date(`${today}T12:00:00`);
@@ -303,10 +246,10 @@ export default function StreakPage() {
     !isTaskDataSchemaUnavailable()
   ) {
     return (
-      <div className="flex min-h-48 items-center justify-center" role="status">
-        <Loader2 className="size-6 animate-spin text-primary" />
-        <span className="sr-only">Loading streak activity</span>
-      </div>
+      <PageLoadingSkeleton
+        label="Loading streak activity"
+        variant="streak"
+      />
     );
   }
 
@@ -431,7 +374,7 @@ export default function StreakPage() {
       </FadeIn>
 
       <FadeIn delay={0.1}>
-        <Heatmap data={heatmapData} />
+        <StreakCalendar today={today} activeDays={activityStreaks.activeDays} />
       </FadeIn>
 
       {/* Task streaks */}

@@ -49,6 +49,7 @@
 }
 
 :root {
+  color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -84,6 +85,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -166,7 +168,27 @@
   width: 6px;
 }
 
+.friends-scroll-region::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--muted) 55%, transparent);
+}
+
 .friends-scroll-region::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--muted-foreground) 58%, transparent);
+}
+
+.group-icon-scroll-region {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 40%, transparent) transparent;
+}
+
+.group-icon-scroll-region::-webkit-scrollbar {
+  display: block;
+  width: 6px;
+}
+
+.group-icon-scroll-region::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
 }
