@@ -22,7 +22,7 @@ export async function proxy(request: NextRequest) {
   const isHome = pathname === "/";
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    if (isPublicRoute) return NextResponse.next();
+    if (isPublicRoute || isHome) return NextResponse.next();
     return redirectTo(request, "/login");
   }
 
@@ -69,7 +69,6 @@ export async function proxy(request: NextRequest) {
     return redirectResponse;
   }
 
-  if (isHome) return redirectTo(request, "/login");
   return response;
 }
 

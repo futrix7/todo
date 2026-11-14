@@ -17,9 +17,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 
 export default function RegisterPage() {
-  const { signUp, authError } = useAuth();
+  const { signUp, verifySignupOtp, resendSignupOtp, authError } = useAuth();
   const router = useRouter();
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
@@ -28,7 +33,26 @@ export default function RegisterPage() {
   const [verificationEmail, setVerificationEmail] = React.useState<string | null>(
     null
   );
+  const [verificationOtp, setVerificationOtp] = React.useState("");
+  const [verificationError, setVerificationError] = React.useState<string | null>(
+    null
+  );
+  const [verificationStatus, setVerificationStatus] = React.useState<
+    string | null
+  >(null);
+  const [verifyingOtp, setVerifyingOtp] = React.useState(false);
+  const [resendingOtp, setResendingOtp] = React.useState(false);
+  const [resendCooldown, setResendCooldown] = React.useState(0);
   const [formError, setFormError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setTimeout(
+      () => setResendCooldown((current) => Math.max(0, current - 1)),
+      1000
+    );
+    return () => window.clearTimeout(timer);
+  }, [resendCooldown]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -47,6 +71,10 @@ export default function RegisterPage() {
       const result = await signUp(name, email.trim(), password);
       if (result.verificationRequired) {
         setVerificationEmail(email.trim());
+        setVerificationOtp("");
+        setVerificationError(null);
+        setVerificationStatus(null);
+        setResendCooldown(60);
       } else {
         router.replace("/tasks");
       }
@@ -56,6 +84,47 @@ export default function RegisterPage() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleVerifyOtp(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!verificationEmail) return;
+    if (verificationOtp.length !== 6) {
+      setVerificationError("Enter the 6-digit code from your email.");
+      return;
+    }
+
+    setVerifyingOtp(true);
+    setVerificationError(null);
+    try {
+      await verifySignupOtp(verificationEmail, verificationOtp);
+      router.replace("/tasks");
+    } catch (error) {
+      setVerificationError(
+        error instanceof Error ? error.message : "Unable to verify your email."
+      );
+    } finally {
+      setVerifyingOtp(false);
+    }
+  }
+
+  async function handleResendOtp() {
+    if (!verificationEmail) return;
+    setResendingOtp(true);
+    setVerificationError(null);
+    setVerificationStatus(null);
+    try {
+      await resendSignupOtp(verificationEmail);
+      setVerificationOtp("");
+      setResendCooldown(60);
+      setVerificationStatus("A new code has been sent.");
+    } catch (error) {
+      setVerificationError(
+        error instanceof Error ? error.message : "Unable to resend the code."
+      );
+    } finally {
+      setResendingOtp(false);
     }
   }
 
@@ -91,7 +160,12 @@ export default function RegisterPage() {
           open
           disablePointerDismissal
           onOpenChange={(open) => {
-            if (!open) setVerificationEmail(null);
+            if (!open) {
+              setVerificationEmail(null);
+              setVerificationOtp("");
+              setVerificationError(null);
+              setVerificationStatus(null);
+            }
           }}
         >
           <DialogContent showCloseButton={false}>
@@ -100,26 +174,76 @@ export default function RegisterPage() {
                 <MailCheck className="size-7" />
               </span>
               <DialogTitle className="text-xl leading-tight">
-                Sent verification link to {verificationEmail}
+                Verify your email
               </DialogTitle>
               <DialogDescription>
-                Go to your email and follow the verification link. Once your
-                email is verified, come back here to sign in.
+                Enter the 6-digit code sent to {verificationEmail}.
               </DialogDescription>
             </DialogHeader>
-            <div className="flex flex-col gap-3">
+            <form
+              onSubmit={handleVerifyOtp}
+              className="flex flex-col items-center gap-4"
+            >
+              {verificationError && (
+                <p className="w-full text-sm text-destructive" role="alert">
+                  {verificationError}
+                </p>
+              )}
+              {verificationStatus && (
+                <p className="w-full text-sm text-muted-foreground" role="status">
+                  {verificationStatus}
+                </p>
+              )}
+              <div className="flex flex-col items-center gap-2">
+                <Label htmlFor="verification-code">Verification code</Label>
+                <InputOTP
+                  id="verification-code"
+                  aria-label="6-digit verification code"
+                  maxLength={6}
+                  value={verificationOtp}
+                  onChange={setVerificationOtp}
+                >
+                  <InputOTPGroup>
+                    {Array.from({ length: 6 }, (_, index) => (
+                      <InputOTPSlot key={index} index={index} />
+                    ))}
+                  </InputOTPGroup>
+                </InputOTP>
+              </div>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={verifyingOtp || verificationOtp.length !== 6}
+              >
+                {verifyingOtp ? "Verifying…" : "Verify email"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                disabled={resendingOtp || resendCooldown > 0}
+                onClick={handleResendOtp}
+              >
+                {resendingOtp
+                  ? "Sending new code…"
+                  : resendCooldown > 0
+                    ? `Resend code in ${resendCooldown}s`
+                    : "Resend code"}
+              </Button>
               <button
                 type="button"
                 onClick={() => {
                   setPassword("");
                   setFormError(null);
                   setVerificationEmail(null);
+                  setVerificationOtp("");
+                  setVerificationError(null);
                 }}
                 className="text-sm font-medium text-primary underline-offset-4 hover:underline"
               >
                 Entered the wrong details? Go back and change them
               </button>
-            </div>
+            </form>
           </DialogContent>
         </Dialog>
       ) : (

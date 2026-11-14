@@ -15,6 +15,33 @@ export interface OwnUsername {
   username_locked: boolean;
 }
 
+export async function loadChallengeStatusVisibility(
+  userId: string
+): Promise<boolean> {
+  const { data, error } = await getClient().rpc(
+    "get_my_challenge_status_visibility",
+    { p_user_id: userId }
+  );
+  if (error) throw error;
+  if (typeof data !== "boolean") {
+    throw new Error("Supabase returned challenge visibility in an invalid format.");
+  }
+  return data;
+}
+
+export async function saveChallengeStatusVisibility(
+  visible: boolean
+): Promise<void> {
+  if (typeof visible !== "boolean") {
+    throw new Error("Challenge visibility must be a boolean.");
+  }
+  const { error } = await getClient().rpc(
+    "save_my_challenge_status_visibility",
+    { p_visible: visible }
+  );
+  if (error) throw error;
+}
+
 export interface FriendRequest {
   id: string;
   requester_id: string;
@@ -52,6 +79,13 @@ export interface FriendLeaderboardScore {
   on_time_rate: number | null;
 }
 
+export interface GlobalLeaderboardScore extends FriendLeaderboardScore {
+  display_name: string;
+  username: string;
+  global_rank: number;
+  total_scored_members: number;
+}
+
 function isFriendLeaderboardScore(value: unknown): value is FriendLeaderboardScore {
   if (!value || typeof value !== "object") return false;
   const score = value as Partial<FriendLeaderboardScore>;
@@ -63,6 +97,19 @@ function isFriendLeaderboardScore(value: unknown): value is FriendLeaderboardSco
     (score.consistency_rate === null ||
       typeof score.consistency_rate === "number") &&
     (score.on_time_rate === null || typeof score.on_time_rate === "number")
+  );
+}
+
+function isGlobalLeaderboardScore(
+  value: unknown
+): value is GlobalLeaderboardScore {
+  if (!isFriendLeaderboardScore(value)) return false;
+  const score = value as Partial<GlobalLeaderboardScore>;
+  return (
+    typeof score.display_name === "string" &&
+    typeof score.username === "string" &&
+    Number.isSafeInteger(score.global_rank) &&
+    Number.isSafeInteger(score.total_scored_members)
   );
 }
 
@@ -225,6 +272,15 @@ export async function loadFriendLeaderboardScores() {
   if (error) throw error;
   if (!Array.isArray(data) || !data.every(isFriendLeaderboardScore)) {
     throw new Error("Supabase returned leaderboard scores in an invalid format.");
+  }
+  return data;
+}
+
+export async function loadGlobalLeaderboardScores() {
+  const { data, error } = await getClient().rpc("get_global_leaderboard_scores");
+  if (error) throw error;
+  if (!Array.isArray(data) || !data.every(isGlobalLeaderboardScore)) {
+    throw new Error("Supabase returned global leaderboard data in an invalid format.");
   }
   return data;
 }

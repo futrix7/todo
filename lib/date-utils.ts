@@ -25,6 +25,29 @@ export function shortLabel(key: string): string {
   return `${months[Number(month) - 1]} ${Number(day)}`;
 }
 
+/** Minutes between two HH:mm values. Overnight windows wrap past midnight. */
+export function minutesBetweenTimes(
+  start: string,
+  end: string
+): number | null {
+  const startMatch = /^(\d{1,2}):(\d{2})$/.exec(start);
+  const endMatch = /^(\d{1,2}):(\d{2})$/.exec(end);
+  if (!startMatch || !endMatch) return null;
+  const startMinutes = Number(startMatch[1]) * 60 + Number(startMatch[2]);
+  const endMinutes = Number(endMatch[1]) * 60 + Number(endMatch[2]);
+  const diff = (endMinutes - startMinutes + 24 * 60) % (24 * 60);
+  return diff > 0 ? diff : null;
+}
+
+/** Human readable duration such as "25m" or "1h 20m". */
+export function formatMinutes(total: number): string {
+  const minutes = Math.max(0, Math.round(total));
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return `${rest}m`;
+  return rest ? `${hours}h ${rest}m` : `${hours}h`;
+}
+
 export function longDateLabel(key: string): string {
   return new Intl.DateTimeFormat("en-US", {
     weekday: "long",

@@ -14,6 +14,8 @@ export interface Task {
   dueDate?: string;
   /** HH:mm */
   startTime?: string;
+  /** HH:mm */
+  endTime?: string;
   /** minutes */
   duration?: number;
   repeat: Repeat;

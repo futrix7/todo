@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import {
   CalendarDays,
   ChevronLeft,
@@ -31,6 +30,7 @@ import { useTodayKey } from "@/lib/use-local-storage";
 import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { PageLoadingSkeleton } from "@/components/page-loading-skeleton";
 import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -117,16 +117,33 @@ export default function CalendarClientPage() {
     };
   }, [reportError, schemaUnavailable, user?.id]);
 
-  const activeMonth =
-    month ?? (todayKey ? localDate(todayKey) : new Date(2000, 0, 1, 12));
+  const activeMonth = React.useMemo(
+    () => month ?? (todayKey ? localDate(todayKey) : new Date(2000, 0, 1, 12)),
+    [month, todayKey]
+  );
   const activeDate = selectedDate || todayKey;
   const loaded = Boolean(user?.id && loadedUserId === user.id);
-  const dates = monthDates(activeMonth);
-  const completionKeys = new Set(
-    completions.map((item) => `${item.taskId}:${item.completedOn}`)
+  const dates = React.useMemo(() => monthDates(activeMonth), [activeMonth]);
+  const completionKeys = React.useMemo(
+    () =>
+      new Set(
+        completions.map((item) => `${item.taskId}:${item.completedOn}`)
+      ),
+    [completions]
   );
+  const tasksByDate = React.useMemo(() => {
+    const byDate = new Map<string, Task[]>();
+    for (const date of dates) {
+      const key = dateKey(date);
+      byDate.set(
+        key,
+        tasks.filter((task) => isScheduledOn(task, key))
+      );
+    }
+    return byDate;
+  }, [dates, tasks]);
   const scheduledForDate = activeDate
-    ? tasks.filter((task) => isScheduledOn(task, activeDate))
+    ? tasksByDate.get(activeDate) ?? []
     : [];
   const isComplete = (task: Task, date: string) =>
     completionKeys.has(`${task.id}:${date}`) ||
@@ -249,13 +266,16 @@ export default function CalendarClientPage() {
       </div>
     );
   }
+  if (!loaded) {
+    return <PageLoadingSkeleton label="Loading your calendar" variant="calendar" />;
+  }
 
   const selectedDateTasks = scheduledForDate;
   const monthName = MONTH_FORMAT.format(activeMonth);
 
   return (
-    <section className="flex min-h-[calc(100dvh-5rem)] w-full min-w-0 flex-col bg-background">
-      <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 px-1 py-3 sm:px-2">
+    <section className="flex min-h-[calc(100dvh-5rem)] w-full min-w-0 flex-col bg-background lg:h-full lg:min-h-0">
+      <header className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/70 px-3 pb-3 pt-3 sm:min-h-16 sm:gap-3 sm:px-4 sm:pb-4 sm:pt-4 md:px-5 lg:min-h-16 lg:px-5 lg:pt-4">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight sm:text-2xl">
             <CalendarDays className="size-5" />
@@ -267,7 +287,9 @@ export default function CalendarClientPage() {
         </div>
         <Button
           type="button"
+          size="sm"
           variant="outline"
+          className="h-8 shrink-0 px-3 text-xs sm:h-9 sm:px-4 sm:text-sm"
           onClick={() => {
             if (!todayKey) return;
             const today = localDate(todayKey);
@@ -287,115 +309,149 @@ export default function CalendarClientPage() {
         onSave={addTask}
       />
 
-      <div
-        className={cn(
-          "flex min-h-0 flex-1 flex-col gap-4",
-          selectedDate && "lg:flex-row"
-        )}
-      >
-        <section className="flex min-w-0 flex-1 flex-col">
-          <div className="flex min-h-14 items-center justify-between border-b px-1 sm:px-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 px-3 pb-4 pt-3 sm:px-4 sm:pb-5 sm:pt-4 md:px-5 lg:flex-row lg:gap-0 lg:px-5 lg:pb-5 lg:pt-4">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-card/10">
+          <div className="flex min-h-12 items-center justify-between border-b border-border/70 px-2 sm:min-h-14 sm:px-3">
             <h2 className="text-sm font-semibold sm:text-base">{monthName}</h2>
             <div className="flex gap-1">
               <Button
                 type="button"
                 size="icon"
                 variant="ghost"
+                className="size-9"
                 aria-label="Previous month"
                 onClick={() => moveMonth(-1)}
               >
-                <ChevronLeft />
+                <ChevronLeft className="size-[18px]" />
               </Button>
               <Button
                 type="button"
                 size="icon"
                 variant="ghost"
+                className="size-9"
                 aria-label="Next month"
                 onClick={() => moveMonth(1)}
               >
-                <ChevronRight />
+                <ChevronRight className="size-[18px]" />
               </Button>
             </div>
           </div>
 
-        <div className="grid grid-cols-7 border-b">
-          {WEEKDAYS.map((day) => (
-            <div
-              key={day}
-              className="py-2 text-center text-[10px] font-medium text-muted-foreground sm:text-xs"
-            >
-              <span className="sm:hidden">{day.slice(0, 1)}</span>
-              <span className="hidden sm:inline">{day}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="grid flex-1 grid-cols-7 content-stretch">
-          {dates.map((date) => {
-            const key = dateKey(date);
-            const dayTasks = tasks.filter((task) => isScheduledOn(task, key));
-            const completedCount = dayTasks.filter((task) => isComplete(task, key)).length;
-            const isCurrentMonth = date.getMonth() === activeMonth.getMonth();
-            return (
-              <button
-                key={key}
-                type="button"
-                aria-label={`${DAY_FORMAT.format(date)}, ${dayTasks.length} tasks`}
-                aria-pressed={activeDate === key}
-                onClick={() => {
-                  setSelectedDate(key);
-                  if (date.getMonth() !== activeMonth.getMonth()) {
-                    setMonth(new Date(date.getFullYear(), date.getMonth(), 1, 12));
-                  }
-                }}
-                className={cn(
-                  "flex min-h-[58px] flex-col items-start border-b border-r border-border/60 px-1.5 py-1.5 text-left text-xs transition-colors hover:bg-muted/60 sm:min-h-[82px] sm:p-2",
-                  !isCurrentMonth && "text-muted-foreground/50",
-                  activeDate === key && "bg-muted",
-                  todayKey === key && "font-semibold"
-                )}
+          <div className="grid grid-cols-7 border-b border-border/70">
+            {WEEKDAYS.map((day) => (
+              <div
+                key={day}
+                className="py-2 text-center text-[10px] font-medium text-muted-foreground sm:text-xs"
               >
-                <span
+                <span className="sm:hidden">{day.slice(0, 1)}</span>
+                <span className="hidden sm:inline">{day}</span>
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="grid min-h-0 flex-1 grid-cols-7 lg:[grid-template-rows:repeat(var(--week-count),minmax(0,1fr))]"
+            style={
+              {
+                "--week-count": Math.max(1, dates.length / 7),
+              } as React.CSSProperties
+            }
+          >
+            {dates.map((date) => {
+              const key = dateKey(date);
+              const dayTasks = tasksByDate.get(key) ?? [];
+              const completedCount = dayTasks.reduce(
+                (count, task) => count + (isComplete(task, key) ? 1 : 0),
+                0
+              );
+              const isCurrentMonth = date.getMonth() === activeMonth.getMonth();
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  aria-label={`${DAY_FORMAT.format(date)}, ${dayTasks.length} tasks`}
+                  aria-pressed={activeDate === key}
+                  onClick={() => {
+                    setSelectedDate(key);
+                    if (date.getMonth() !== activeMonth.getMonth()) {
+                      setMonth(new Date(date.getFullYear(), date.getMonth(), 1, 12));
+                    }
+                  }}
                   className={cn(
-                    "flex size-6 items-center justify-center sm:size-7",
-                    todayKey === key && "bg-primary text-primary-foreground"
+                    "group flex min-h-[52px] min-w-0 flex-col items-stretch border-b border-r border-border/60 px-1.5 py-1.5 text-left text-xs transition-colors hover:bg-muted/60 sm:min-h-[76px] sm:p-2 sm:text-sm lg:min-h-0 lg:overflow-hidden",
+                    !isCurrentMonth && "bg-muted/20 text-muted-foreground/60",
+                    activeDate === key && "bg-primary/[0.04]",
+                    todayKey === key && "font-semibold"
                   )}
                 >
-                  {date.getDate()}
-                </span>
-                <span className="mt-1 hidden w-full truncate text-left text-[10px] text-muted-foreground sm:block">
-                  {dayTasks.length > 0
-                    ? `${completedCount}/${dayTasks.length} tasks`
-                    : "\u00a0"}
-                </span>
-                {dayTasks.length > 0 && (
-                  <span className="mt-1 flex gap-0.5 sm:hidden" aria-hidden="true">
+                  <div className="flex w-full min-w-0 items-center justify-between gap-1">
+                    <span
+                      className={cn(
+                        "flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-medium tabular-nums sm:size-7 sm:text-xs",
+                        todayKey === key &&
+                          "bg-primary font-semibold text-primary-foreground"
+                      )}
+                    >
+                      {date.getDate()}
+                    </span>
+                    {dayTasks.length > 0 && (
+                      <span className="hidden shrink-0 text-[10px] tabular-nums text-muted-foreground lg:block">
+                        {completedCount}/{dayTasks.length}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 hidden min-h-0 flex-1 flex-col gap-0.5 overflow-hidden lg:flex">
                     {dayTasks.slice(0, 3).map((task) => (
                       <span
                         key={task.id}
+                        title={task.title}
                         className={cn(
-                          "size-1 rounded-full bg-muted-foreground/50",
-                          isComplete(task, key) && "bg-primary"
+                          "truncate rounded px-1 text-[11px] leading-[1.1rem]",
+                          isComplete(task, key)
+                            ? "bg-muted text-muted-foreground line-through"
+                            : "bg-primary/10 text-foreground group-hover:bg-primary/15"
                         )}
-                      />
+                      >
+                        {task.startTime ? `${task.startTime} ` : ""}
+                        {task.title}
+                      </span>
                     ))}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+                    {dayTasks.length > 3 && (
+                      <span className="truncate px-1 text-[10px] text-muted-foreground">
+                        +{dayTasks.length - 3} more
+                      </span>
+                    )}
+                  </div>
+                  {dayTasks.length > 0 && (
+                    <span
+                      className="mt-auto flex flex-wrap gap-0.5 lg:hidden"
+                      aria-hidden="true"
+                    >
+                      {dayTasks.slice(0, 3).map((task) => (
+                        <span
+                          key={task.id}
+                          className={cn(
+                            "size-1 rounded-full bg-muted-foreground/50",
+                            isComplete(task, key) && "bg-primary"
+                          )}
+                        />
+                      ))}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          </div>
         </section>
 
-        <AnimatePresence initial={false}>
-        {selectedDate && (
-        <motion.aside
-          key="selected-date-panel"
-          initial={{ opacity: 0, x: 20, width: 0 }}
-          animate={{ opacity: 1, x: 0, width: "min(100%, 24rem)" }}
-          exit={{ opacity: 0, x: 20, width: 0 }}
-          transition={{ duration: 0.22, ease: "easeOut" }}
-          className="flex min-h-72 w-full shrink-0 flex-col overflow-hidden border-t border-border/70 bg-card/40 lg:min-h-0 lg:border-l lg:border-t-0"
+        <aside
+          className={cn(
+            "flex min-h-56 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-card/40 lg:h-full lg:min-h-0 lg:w-80 lg:rounded-none lg:border-y-0 lg:border-l lg:border-r-0 xl:w-96",
+            !selectedDate && "hidden lg:flex"
+          )}
+          aria-label="Selected day"
         >
         <div className="flex min-h-14 items-center justify-between border-b px-3 sm:px-4">
           <div>
@@ -411,29 +467,22 @@ export default function CalendarClientPage() {
             <Button
               type="button"
               size="icon"
-              variant="ghost"
+              variant="outline"
               aria-label="Add task"
               disabled={!loaded || !activeDate}
               onClick={() => setAddTaskDialogOpen(true)}
             >
               <Plus />
             </Button>
-            <ListTodo className="mr-1 size-5 text-muted-foreground" />
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-        {!loaded ? (
-          <div className="space-y-3 p-4" aria-label="Loading tasks">
-            {[0, 1, 2].map((item) => (
-              <div key={item} className="h-10 animate-pulse bg-muted" />
-            ))}
-          </div>
-        ) : selectedDateTasks.length ? (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {selectedDateTasks.length ? (
           <ul className="divide-y">
             {selectedDateTasks.map((task) => {
               const completed = isComplete(task, activeDate);
               return (
-                <li key={task.id} className="flex items-start gap-3 px-4 py-4 sm:px-5">
+                <li key={task.id} className="flex items-start gap-3 px-3 py-3 sm:px-5 sm:py-4">
                   <Checkbox
                     checked={completed}
                     disabled={savingTaskId === task.id}
@@ -469,14 +518,15 @@ export default function CalendarClientPage() {
             })}
           </ul>
         ) : (
-          <p className="p-5 text-sm text-muted-foreground">
-            {loaded ? "No tasks scheduled for this day." : "Loading tasks…"}
-          </p>
+          <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
+            <ListTodo className="size-7 text-muted-foreground/60" />
+            <p className="text-sm text-muted-foreground">
+              {loaded ? "No tasks scheduled for this day." : "Loading tasks…"}
+            </p>
+          </div>
         )}
         </div>
-        </motion.aside>
-        )}
-        </AnimatePresence>
+        </aside>
       </div>
     </section>
   );

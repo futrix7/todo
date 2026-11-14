@@ -74,6 +74,7 @@ function isTask(value: unknown): value is Task {
     typeof task.category === "string" &&
     (task.dueDate === undefined || typeof task.dueDate === "string") &&
     (task.startTime === undefined || typeof task.startTime === "string") &&
+    (task.endTime === undefined || typeof task.endTime === "string") &&
     (task.duration === undefined || typeof task.duration === "number") &&
     (task.repeat === "none" ||
       task.repeat === "daily" ||

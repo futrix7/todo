@@ -41,6 +41,121 @@ create table if not exists public.task_completions (
     references public.tasks (user_id, id) on delete cascade
 );
 
+-- Habits and their daily logs are independent from tasks and task history.
+create table if not exists public.habits (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  id text not null,
+  name text not null check (length(btrim(name)) between 1 and 80),
+  emoji text not null default '✨',
+  notes text not null default '',
+  category text not null default 'Personal',
+  habit_type text not null
+    check (habit_type in ('yes_no', 'count', 'measure', 'quit')),
+  frequency text not null
+    check (frequency in ('daily', 'weekdays', 'monthly', 'custom')),
+  schedule_days smallint[] not null default '{}',
+  started_on date not null default current_date,
+  end_on date,
+  start_time text,
+  target_value numeric not null default 1 check (target_value > 0),
+  unit text not null default '',
+  color text not null default 'gray'
+    check (color in ('gray', 'teal', 'blue', 'violet', 'amber', 'rose')),
+  archived boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, id),
+  constraint habits_valid_date_range
+    check (end_on is null or end_on >= started_on),
+  check (
+    (frequency = 'custom'
+      and cardinality(schedule_days) between 1 and 7
+      and schedule_days <@ array[0, 1, 2, 3, 4, 5, 6]::smallint[])
+    or (frequency <> 'custom' and cardinality(schedule_days) = 0)
+  )
+);
+
+alter table public.habits
+  add column if not exists emoji text not null default '✨';
+alter table public.habits
+  add column if not exists end_on date;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'habits_valid_date_range'
+      and conrelid = 'public.habits'::regclass
+  ) then
+    alter table public.habits
+      add constraint habits_valid_date_range
+      check (end_on is null or end_on >= started_on);
+  end if;
+end;
+$$;
+
+create table if not exists public.habit_logs (
+  user_id uuid not null,
+  habit_id text not null,
+  completed_on date not null,
+  value numeric not null default 0 check (value >= 0),
+  status text not null
+    check (status in ('in_progress', 'completed', 'skipped')),
+  logged_at timestamptz not null default now(),
+  primary key (user_id, habit_id, completed_on),
+  foreign key (user_id, habit_id)
+    references public.habits (user_id, id) on delete cascade
+);
+
+create index if not exists habit_logs_user_date
+  on public.habit_logs (user_id, completed_on desc);
+create index if not exists habits_user_active
+  on public.habits (user_id, archived, created_at);
+
+alter table public.habits enable row level security;
+drop policy if exists "Users can read their own habits" on public.habits;
+create policy "Users can read their own habits"
+  on public.habits for select to authenticated
+  using (auth.uid() = user_id);
+drop policy if exists "Users can create their own habits" on public.habits;
+create policy "Users can create their own habits"
+  on public.habits for insert to authenticated
+  with check (auth.uid() = user_id);
+drop policy if exists "Users can update their own habits" on public.habits;
+create policy "Users can update their own habits"
+  on public.habits for update to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+drop policy if exists "Users can delete their own habits" on public.habits;
+create policy "Users can delete their own habits"
+  on public.habits for delete to authenticated
+  using (auth.uid() = user_id);
+
+alter table public.habit_logs enable row level security;
+drop policy if exists "Users can read their own habit logs" on public.habit_logs;
+create policy "Users can read their own habit logs"
+  on public.habit_logs for select to authenticated
+  using (auth.uid() = user_id);
+drop policy if exists "Users can record their own habit logs" on public.habit_logs;
+create policy "Users can record their own habit logs"
+  on public.habit_logs for insert to authenticated
+  with check (auth.uid() = user_id);
+drop policy if exists "Users can update their own habit logs" on public.habit_logs;
+create policy "Users can update their own habit logs"
+  on public.habit_logs for update to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+drop policy if exists "Users can delete their own habit logs" on public.habit_logs;
+create policy "Users can delete their own habit logs"
+  on public.habit_logs for delete to authenticated
+  using (auth.uid() = user_id);
+
+revoke all on public.habits, public.habit_logs
+  from public, anon, authenticated;
+grant select, insert, update, delete
+  on public.habits, public.habit_logs to authenticated;
+
 alter table public.task_completions enable row level security;
 drop policy if exists "Users can read their own task completions"
   on public.task_completions;
@@ -114,6 +229,8 @@ create table if not exists public.profiles (
 );
 alter table public.profiles
   add column if not exists username_locked boolean not null default false;
+alter table public.profiles
+  add column if not exists challenge_status_visible boolean not null default true;
 create unique index if not exists profiles_username_case_insensitive_unique
   on public.profiles (lower(username));
 
@@ -125,6 +242,62 @@ create policy "Authenticated users can view profiles"
   using (auth.uid() is not null);
 revoke all on public.profiles from public, anon, authenticated;
 grant select on public.profiles to authenticated;
+
+create or replace function public.get_my_challenge_status_visibility(
+  p_user_id uuid
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  visibility boolean;
+begin
+  if auth.uid() is null or auth.uid() is distinct from p_user_id then
+    raise exception using errcode = '42501', message = 'not_your_profile';
+  end if;
+
+  select profile.challenge_status_visible
+    into visibility
+    from public.profiles as profile
+    where profile.user_id = auth.uid();
+  if not found then
+    raise exception using errcode = '23503', message = 'profile_not_found';
+  end if;
+  return visibility;
+end;
+$$;
+revoke all on function public.get_my_challenge_status_visibility(uuid)
+  from public, anon, authenticated;
+grant execute on function public.get_my_challenge_status_visibility(uuid)
+  to authenticated;
+
+create or replace function public.save_my_challenge_status_visibility(
+  p_visible boolean
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if auth.uid() is null then
+    raise exception using errcode = '42501', message = 'authentication_required';
+  end if;
+
+  update public.profiles
+    set challenge_status_visible = p_visible
+    where user_id = auth.uid();
+  if not found then
+    raise exception using errcode = '23503', message = 'profile_not_found';
+  end if;
+end;
+$$;
+revoke all on function public.save_my_challenge_status_visibility(boolean)
+  from public, anon, authenticated;
+grant execute on function public.save_my_challenge_status_visibility(boolean)
+  to authenticated;
 
 create or replace function public.claim_my_username(p_username text)
 returns text
@@ -657,14 +830,57 @@ create table if not exists public.challenge_catalog (
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+alter table public.challenge_catalog
+  add column if not exists creator_id uuid
+  references auth.users (id) on delete set null;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.challenge_catalog'::regclass
+      and conname = 'challenge_catalog_name_length_check'
+  ) then
+    alter table public.challenge_catalog
+      add constraint challenge_catalog_name_length_check
+      check (char_length(btrim(name)) between 1 and 100);
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.challenge_catalog'::regclass
+      and conname = 'challenge_catalog_description_length_check'
+  ) then
+    alter table public.challenge_catalog
+      add constraint challenge_catalog_description_length_check
+      check (char_length(btrim(description)) between 1 and 1000);
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.challenge_catalog'::regclass
+      and conname = 'challenge_catalog_target_days_range_check'
+  ) then
+    alter table public.challenge_catalog
+      add constraint challenge_catalog_target_days_range_check
+      check (target_days between 1 and 365);
+  end if;
+end;
+$$;
 alter table public.challenge_catalog enable row level security;
 drop policy if exists "Authenticated users can view active challenges"
   on public.challenge_catalog;
 create policy "Authenticated users can view active challenges"
   on public.challenge_catalog for select to authenticated
   using (is_active);
+drop policy if exists "Authenticated users can create owned challenges"
+  on public.challenge_catalog;
+create policy "Authenticated users can create owned challenges"
+  on public.challenge_catalog for insert to authenticated
+  with check (auth.uid() is not null and creator_id = auth.uid());
 revoke all on public.challenge_catalog from public, anon, authenticated;
-grant select on public.challenge_catalog to authenticated;
+grant select (
+  id, name, category, target_days, description, creator_id, is_active, created_at
+) on public.challenge_catalog to authenticated;
+grant insert (id, name, category, target_days, description, creator_id)
+  on public.challenge_catalog to authenticated;
 
 create table if not exists public.challenge_participants (
   challenge_id text not null
@@ -694,6 +910,39 @@ create policy "Users can leave their own challenges"
   using (auth.uid() = user_id);
 revoke all on public.challenge_participants from public, anon, authenticated;
 grant select, insert, delete on public.challenge_participants to authenticated;
+
+create or replace function public.get_visible_challenge_participants(
+  p_challenge_id text
+)
+returns table (display_name text, username text)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if auth.uid() is null then
+    raise exception using errcode = '42501', message = 'authentication_required';
+  end if;
+
+  return query
+    select profile.display_name, profile.username
+    from public.challenge_participants as participant
+    join public.challenge_catalog as challenge
+      on challenge.id = participant.challenge_id
+    join public.profiles as profile
+      on profile.user_id = participant.user_id
+    where participant.challenge_id = p_challenge_id
+      and challenge.is_active
+      and profile.challenge_status_visible
+    order by profile.display_name, profile.username
+    limit 100;
+end;
+$$;
+revoke all on function public.get_visible_challenge_participants(text)
+  from public, anon, authenticated;
+grant execute on function public.get_visible_challenge_participants(text)
+  to authenticated;
 
 create table if not exists public.challenge_checkins (
   challenge_id text not null,
@@ -773,6 +1022,78 @@ revoke all on function public.get_challenge_stats(text[])
 grant execute on function public.get_challenge_stats(text[])
   to authenticated;
 
+create or replace function public.get_challenge_leaderboard(
+  p_challenge_id text
+)
+returns table (
+  user_id uuid,
+  display_name text,
+  username text,
+  completed_days bigint,
+  target_days integer,
+  joined_on date
+)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if auth.uid() is null then
+    raise exception using errcode = '42501', message = 'authentication_required';
+  end if;
+
+  return query
+    select
+      participant.user_id,
+      profile.display_name,
+      profile.username,
+      least(
+        challenge.target_days::bigint,
+        count(checkin.completed_on) filter (
+          where checkin.completed_on between participant.joined_on and current_date
+        )
+      ) as completed_days,
+      challenge.target_days,
+      participant.joined_on
+    from public.challenge_catalog as challenge
+    join public.challenge_participants as participant
+      on participant.challenge_id = challenge.id
+    join public.profiles as profile
+      on profile.user_id = participant.user_id
+    left join public.challenge_checkins as checkin
+      on checkin.challenge_id = participant.challenge_id
+      and checkin.user_id = participant.user_id
+    where challenge.id = p_challenge_id
+      and challenge.is_active
+      and (
+        profile.challenge_status_visible
+        or participant.user_id = auth.uid()
+      )
+    group by
+      participant.user_id,
+      profile.display_name,
+      profile.username,
+      challenge.target_days,
+      participant.joined_on
+    order by
+      least(
+        challenge.target_days::bigint,
+        count(checkin.completed_on) filter (
+          where checkin.completed_on between participant.joined_on and current_date
+        )
+      ) desc,
+      participant.joined_on asc,
+      profile.display_name asc,
+      profile.username asc
+    limit 100;
+end;
+$$;
+revoke all on function public.get_challenge_leaderboard(text)
+  from public, anon, authenticated;
+grant execute on function public.get_challenge_leaderboard(text)
+  to authenticated;
+
 create or replace function public.join_challenge_and_create_task(
   p_challenge_id text,
   p_joined_on date
@@ -844,8 +1165,10 @@ revoke all on function public.join_challenge_and_create_task(text, date)
 grant execute on function public.join_challenge_and_create_task(text, date)
   to authenticated;
 
--- Friend leaderboard score for the signed-in user and accepted friends.
-create or replace function public.get_friend_leaderboard_scores()
+-- Shared score calculation for friend and global leaderboards.
+create or replace function public.get_leaderboard_scores_for_scope(
+  p_scope text
+)
 returns table (
   user_id uuid,
   score numeric,
@@ -865,7 +1188,14 @@ as $$
     select auth.uid() as user_id where auth.uid() is not null
   ),
   target_users as (
-    select user_id from viewer
+    select profile.user_id
+    from public.profiles as profile
+    cross join viewer
+    where p_scope = 'global'
+    union
+    select user_id
+    from viewer
+    where p_scope = 'friends'
     union
     select case
       when request.requester_id = viewer.user_id then request.recipient_id
@@ -873,7 +1203,8 @@ as $$
     end
     from public.friend_requests as request
     cross join viewer
-    where request.status = 'accepted'
+    where p_scope = 'friends'
+      and request.status = 'accepted'
       and (
         request.requester_id = viewer.user_id
         or request.recipient_id = viewer.user_id
@@ -1023,9 +1354,81 @@ as $$
     rates.on_time_rate
   from rates;
 $$;
+revoke all on function public.get_leaderboard_scores_for_scope(text)
+  from public, anon, authenticated;
+
+create or replace function public.get_friend_leaderboard_scores()
+returns table (
+  user_id uuid,
+  score numeric,
+  completion_rate numeric,
+  consistency_rate numeric,
+  on_time_rate numeric
+)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select *
+  from public.get_leaderboard_scores_for_scope('friends');
+$$;
 revoke all on function public.get_friend_leaderboard_scores()
-  from public, anon;
+  from public, anon, authenticated;
 grant execute on function public.get_friend_leaderboard_scores()
+  to authenticated;
+
+create or replace function public.get_global_leaderboard_scores()
+returns table (
+  user_id uuid,
+  display_name text,
+  username text,
+  score numeric,
+  completion_rate numeric,
+  consistency_rate numeric,
+  on_time_rate numeric,
+  global_rank bigint,
+  total_scored_members bigint
+)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  with ranked_scores as (
+    select
+      score.user_id,
+      score.score,
+      score.completion_rate,
+      score.consistency_rate,
+      score.on_time_rate,
+      row_number() over (
+        order by score.score desc, score.user_id
+      ) as global_rank,
+      count(*) over () as total_scored_members
+    from public.get_leaderboard_scores_for_scope('global') as score
+    where score.score is not null
+  )
+  select
+    ranked.user_id,
+    profile.display_name,
+    profile.username,
+    ranked.score,
+    ranked.completion_rate,
+    ranked.consistency_rate,
+    ranked.on_time_rate,
+    ranked.global_rank,
+    ranked.total_scored_members
+  from ranked_scores as ranked
+  join public.profiles as profile
+    on profile.user_id = ranked.user_id
+  where ranked.global_rank <= 100
+    or ranked.user_id = auth.uid()
+  order by ranked.global_rank;
+$$;
+revoke all on function public.get_global_leaderboard_scores()
+  from public, anon, authenticated;
+grant execute on function public.get_global_leaderboard_scores()
   to authenticated;
 
 -- Account data reset. Child rows are removed by their foreign-key cascades.
@@ -1053,6 +1456,8 @@ begin
   where recipient_id = current_user_id;
   delete from public.friend_requests
   where requester_id = current_user_id or recipient_id = current_user_id;
+  delete from public.habits
+  where user_id = current_user_id;
   delete from public.tasks
   where user_id = current_user_id;
   delete from public.task_groups

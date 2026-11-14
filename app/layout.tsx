@@ -19,11 +19,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Taskflow — Tasks, streaks & daily check-ins",
+    default: "Taskflow — Tasks and habits",
     template: "%s · Taskflow",
   },
   description:
-    "A simple todo app with advanced scheduling, streaks, daily mood check-ins and analytics.",
+    "Plan your tasks, build habits, and track your progress.",
 };
 
 export const viewport: Viewport = {

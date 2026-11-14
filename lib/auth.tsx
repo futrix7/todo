@@ -15,6 +15,8 @@ interface AuthContextValue {
     email: string,
     password: string
   ) => Promise<{ verificationRequired: boolean }>;
+  verifySignupOtp: (email: string, token: string) => Promise<void>;
+  resendSignupOtp: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateProfile: (patch: Partial<AuthUser>) => Promise<void>;
 }
@@ -127,6 +129,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const verifySignupOtp = React.useCallback(
+    async (email: string, token: string) => {
+      const supabase = getSupabase();
+      if (!supabase) {
+        throw new Error(
+          "Supabase is not configured. Add its URL and anon key to .env.local."
+        );
+      }
+
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: "signup",
+      });
+      if (error) throw error;
+      if (!data.user) throw new Error("Supabase did not verify your email.");
+      setUser(mapSupabaseUser(data.user));
+      setAuthError(null);
+      setAuthReady(true);
+    },
+    []
+  );
+
+  const resendSignupOtp = React.useCallback(async (email: string) => {
+    const supabase = getSupabase();
+    if (!supabase) {
+      throw new Error(
+        "Supabase is not configured. Add its URL and anon key to .env.local."
+      );
+    }
+
+    const { error } = await supabase.auth.resend({ type: "signup", email });
+    if (error) throw error;
+  }, []);
+
   const signOut = React.useCallback(async () => {
     const supabase = getSupabase();
     if (!supabase) {
@@ -164,10 +201,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authError,
       signIn,
       signUp,
+      verifySignupOtp,
+      resendSignupOtp,
       signOut,
       updateProfile,
     }),
-    [user, authReady, authError, signIn, signUp, signOut, updateProfile]
+    [
+      user,
+      authReady,
+      authError,
+      signIn,
+      signUp,
+      verifySignupOtp,
+      resendSignupOtp,
+      signOut,
+      updateProfile,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

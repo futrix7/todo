@@ -9,7 +9,7 @@ import {
   CheckCircle2,
   Clock,
   Flame,
-  Smile,
+  Sprout,
   TrendingUp,
 } from "lucide-react";
 import {
@@ -19,8 +19,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   XAxis,
@@ -30,6 +28,8 @@ import {
 import { useAuth } from "@/lib/auth";
 import { dateKey, shortLabel } from "@/lib/date-utils";
 import { getActivityStreaks } from "@/lib/task-activity";
+import { getHabitConsistencySeries } from "@/lib/habit-analytics";
+import type { Habit, HabitLog } from "@/lib/habits";
 import {
   getDayRatingScore,
   type DayEntry,
@@ -44,8 +44,14 @@ import {
   loadDayEntries,
   loadTasks,
 } from "@/lib/supabase/task-data";
+import {
+  isMissingHabitDataSchemaError,
+  loadHabitLogs,
+  loadHabits,
+} from "@/lib/supabase/habit-data";
 import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
 import { PageLoadingSkeleton } from "@/components/page-loading-skeleton";
+import { HabitIcon } from "@/components/habit-icon";
 import {
   ChartContainer,
   ChartLegend,
@@ -85,12 +91,16 @@ const weeklyConfig = {
   lastWeek: { label: "Last week", color: "var(--chart-2)" },
 } satisfies ChartConfig;
 
-const moodConfig = {
-  mood: { label: "Mood", color: "var(--chart-1)" },
-} satisfies ChartConfig;
-
 const dayRatingConfig = {
   rating: { label: "Daily rating", color: "var(--chart-1)" },
+} satisfies ChartConfig;
+
+const habitConsistencyConfig = {
+  consistency: { label: "Consistency", color: "var(--chart-1)" },
+} satisfies ChartConfig;
+
+const habitActivityConfig = {
+  completed: { label: "Completed", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
 function getDateKeys(today: string, count: number) {
@@ -124,38 +134,66 @@ export default function AnalyticsClientPage() {
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const [completions, setCompletions] = React.useState<TaskCompletion[]>([]);
   const [dayEntries, setDayEntries] = React.useState<DayEntry[]>([]);
+  const [habits, setHabits] = React.useState<Habit[]>([]);
+  const [habitLogs, setHabitLogs] = React.useState<HabitLog[]>([]);
+  const [habitSchemaUnavailable, setHabitSchemaUnavailable] =
+    React.useState(false);
   const [loadedUserId, setLoadedUserId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!isSupabaseConfigured) return;
     if (!user?.id) return;
+    if (!today) return;
 
     const userId = user.id;
     if (schemaUnavailable || isTaskDataSchemaUnavailable()) return;
 
     let active = true;
-    Promise.all([
+    Promise.allSettled([
       loadTasks(userId),
       loadCompletions(userId),
       loadDayEntries(userId),
-    ])
-      .then(([remoteTasks, remoteCompletions, remoteDayEntries]) => {
-        if (!active) return;
-        setTasks(remoteTasks);
-        setCompletions(remoteCompletions);
-        setDayEntries(remoteDayEntries);
-        setLoadedUserId(userId);
-      })
-      .catch((error: unknown) => {
-        if (!active) return;
-        reportError(error);
-        setLoadedUserId(userId);
-      });
+      loadHabits(userId),
+      loadHabitLogs(userId, getDateKeys(today, 30)[0]),
+    ]).then((results) => {
+      if (!active) return;
+      const [taskResult, completionResult, dayResult, habitResult, logsResult] =
+        results;
+      setTasks([]);
+      setCompletions([]);
+      setDayEntries([]);
+      setHabits([]);
+      setHabitLogs([]);
+      setHabitSchemaUnavailable(false);
+      if (taskResult.status === "fulfilled") setTasks(taskResult.value);
+      if (completionResult.status === "fulfilled") {
+        setCompletions(completionResult.value);
+      }
+      if (dayResult.status === "fulfilled") setDayEntries(dayResult.value);
+      if (habitResult.status === "fulfilled") setHabits(habitResult.value);
+      if (logsResult.status === "fulfilled") setHabitLogs(logsResult.value);
+      const taskFailure = results
+        .slice(0, 3)
+        .find((result) => result.status === "rejected");
+      const habitFailure = results
+        .slice(3)
+        .find((result) => result.status === "rejected");
+      if (taskFailure?.status === "rejected") {
+        reportError(taskFailure.reason);
+      } else if (habitFailure?.status === "rejected") {
+        if (isMissingHabitDataSchemaError(habitFailure.reason)) {
+          setHabitSchemaUnavailable(true);
+        } else {
+          reportError(habitFailure.reason);
+        }
+      }
+      setLoadedUserId(userId);
+    });
 
     return () => {
       active = false;
     };
-  }, [user?.id, setTasks, setCompletions, setDayEntries, reportError, schemaUnavailable]);
+  }, [user?.id, today, setTasks, setCompletions, setDayEntries, reportError, schemaUnavailable]);
 
   const rangeDays = Number(range);
   const dates = React.useMemo(
@@ -163,6 +201,55 @@ export default function AnalyticsClientPage() {
     [today, rangeDays]
   );
   const dateSet = React.useMemo(() => new Set(dates), [dates]);
+  const activeHabits = React.useMemo(
+    () => habits.filter((habit) => !habit.archived),
+    [habits]
+  );
+  const habitConsistencyData = React.useMemo(
+    () => getHabitConsistencySeries(activeHabits, habitLogs, dates),
+    [activeHabits, dates, habitLogs]
+  );
+  const habitScheduledCount = habitConsistencyData.reduce(
+    (total, point) => total + point.scheduled,
+    0
+  );
+  const habitCompletedCount = habitConsistencyData.reduce(
+    (total, point) => total + point.completed,
+    0
+  );
+  const habitConsistency = habitScheduledCount
+    ? Math.round((habitCompletedCount / habitScheduledCount) * 100)
+    : null;
+  const habitBreakdown = React.useMemo(
+    () =>
+      activeHabits
+        .map((habit) => {
+          const series = getHabitConsistencySeries([habit], habitLogs, dates);
+          const scheduled = series.reduce(
+            (total, point) => total + point.scheduled,
+            0
+          );
+          const completed = series.reduce(
+            (total, point) => total + point.completed,
+            0
+          );
+          return {
+            habit,
+            series,
+            scheduled,
+            completed,
+            consistency: scheduled
+              ? Math.round((completed / scheduled) * 100)
+              : null,
+          };
+        })
+        .sort((a, b) => {
+          if (a.consistency === null) return 1;
+          if (b.consistency === null) return -1;
+          return b.consistency - a.consistency;
+        }),
+    [activeHabits, dates, habitLogs]
+  );
 
   const allCompletions = React.useMemo(() => {
     const byKey = new Map(
@@ -224,15 +311,6 @@ export default function AnalyticsClientPage() {
       fill: CHART_COLORS[index % CHART_COLORS.length],
     }));
   }, [rangeCompletions, taskById]);
-
-  const moodData = React.useMemo(
-    () =>
-      dayEntries
-        .filter((entry) => dateSet.has(entry.date))
-        .sort((a, b) => a.date.localeCompare(b.date))
-        .map((entry) => ({ day: shortLabel(entry.date), mood: entry.mood })),
-    [dayEntries, dateSet]
-  );
 
   const dayRatingData = React.useMemo(() => {
     const ratingByDate = new Map(
@@ -321,6 +399,14 @@ export default function AnalyticsClientPage() {
         : "Enable streaks on a task to track",
       icon: Flame,
     },
+    {
+      label: "Habit consistency",
+      value: habitConsistency === null ? "—" : `${habitConsistency}%`,
+      detail: habitScheduledCount
+        ? `${habitCompletedCount} of ${habitScheduledCount} scheduled check-ins`
+        : "No scheduled habits in this range",
+      icon: CheckCircle2,
+    },
   ];
 
   if (isSupabaseConfigured && !user?.id) {
@@ -358,7 +444,7 @@ export default function AnalyticsClientPage() {
               Analytics
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
-              Task trends, check-ins, and focus time.
+              Task, habit, and mood trends.
             </p>
           </div>
         </div>
@@ -384,7 +470,7 @@ export default function AnalyticsClientPage() {
 
       <section
         aria-label="Analytics summary"
-        className="grid grid-cols-2 border-b sm:grid-cols-4"
+        className="grid grid-cols-2 border-b sm:grid-cols-5"
       >
         {kpis.map((kpi, index) => {
           const Icon = kpi.icon;
@@ -393,8 +479,8 @@ export default function AnalyticsClientPage() {
               key={kpi.label}
               className={`flex min-h-24 items-start gap-3 px-3 py-3 sm:px-4 md:px-6 lg:px-8 ${
                 index % 2 === 0 ? "border-r sm:border-r-0" : ""
-              } ${index < 2 ? "border-b sm:border-b-0" : ""} ${
-                index < 3 ? "sm:border-r" : ""
+              } ${index < 4 ? "border-b sm:border-b-0" : ""} ${
+                index < 4 ? "sm:border-r" : ""
               }`}
             >
               <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -411,6 +497,17 @@ export default function AnalyticsClientPage() {
           );
         })}
       </section>
+
+      {habitSchemaUnavailable && (
+        <p
+          className="border-b bg-muted/30 px-4 py-3 text-sm text-muted-foreground"
+          role="alert"
+        >
+          Habit analytics require the <code>habits</code> and{" "}
+          <code>habit_logs</code> tables. Apply <code>supabase/schema.sql</code>{" "}
+          in your Supabase project.
+        </p>
+      )}
 
       <div className="grid min-w-0 flex-1 grid-cols-1 sm:grid-cols-2">
         <section className="min-w-0 border-b px-3 py-3 sm:border-r sm:px-4 md:px-6 lg:px-8">
@@ -480,7 +577,7 @@ export default function AnalyticsClientPage() {
                       />
                     }
                   />
-                  <Bar dataKey="rating" radius={[5, 5, 5, 5]} barSize={18}>
+                  <Bar dataKey="rating" radius={[5, 5, 0, 0]} barSize={18}>
                     {dayRatingData.map((entry) => (
                       <Cell
                         key={entry.date}
@@ -529,24 +626,189 @@ export default function AnalyticsClientPage() {
               )}
         </section>
 
-        <section className="min-w-0 border-b px-3 py-3 sm:px-4 md:px-6 lg:px-8">
+        <section className="min-w-0 border-b px-3 py-3 sm:col-span-2 sm:border-r-0 sm:px-4 md:px-6 lg:px-8">
           <div className="mb-2 flex items-center gap-2">
-            <Smile className="size-4 text-primary" />
-            <h2 className="text-sm font-semibold">Mood check-ins</h2>
+            <CheckCircle2 className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold">Habit consistency</h2>
+            <span className="ml-auto text-xs text-muted-foreground">{range} days</span>
           </div>
-              {moodData.length ? (
-                <ChartContainer config={moodConfig} className="h-[320px] w-full sm:h-[360px]">
-                  <LineChart data={moodData} margin={{ left: 4, right: 8, top: 8 }}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} />
-                    <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} tickLine={false} axisLine={false} width={28} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Line type="monotone" dataKey="mood" stroke="var(--chart-1)" strokeWidth={2.5} dot={{ r: 3, fill: "var(--chart-1)" }} activeDot={{ r: 5 }} />
-                  </LineChart>
-                </ChartContainer>
-              ) : (
-                <EmptyChart>No mood check-ins recorded in this date range.</EmptyChart>
+          {habitScheduledCount ? (
+            <ChartContainer
+              config={habitConsistencyConfig}
+              className="h-[320px] w-full sm:h-[360px]"
+            >
+              <AreaChart data={habitConsistencyData} margin={{ left: 4, right: 8, top: 8 }}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} />
+                <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickLine={false} axisLine={false} width={34} unit="%" />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value, _name, item) => {
+                        const point = item.payload as (typeof habitConsistencyData)[number];
+                        return [
+                          `${Number(value)}% (${point.completed}/${point.scheduled})`,
+                          "Consistency",
+                        ];
+                      }}
+                    />
+                  }
+                />
+                <Area
+                  type="monotone"
+                  dataKey="consistency"
+                  stroke="var(--chart-1)"
+                  fill="var(--chart-1)"
+                  fillOpacity={0.14}
+                  connectNulls
+                />
+              </AreaChart>
+            </ChartContainer>
+          ) : (
+            <EmptyChart>
+              {activeHabits.length
+                ? "No habits were scheduled in this date range."
+                : "Create an active habit to start tracking consistency."}
+            </EmptyChart>
+          )}
+        </section>
+
+        <section className="min-w-0 border-b px-3 py-3 sm:col-span-2 sm:px-4 md:px-6 lg:px-8">
+          <div className="mb-2 flex items-center gap-2">
+            <Activity className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold">Habit check-ins</h2>
+            <span className="ml-auto text-xs text-muted-foreground">{range} days</span>
+          </div>
+          {habitScheduledCount ? (
+            <ChartContainer
+              config={habitActivityConfig}
+              className="h-[320px] w-full sm:h-[360px]"
+            >
+              <BarChart data={habitConsistencyData} margin={{ left: 4, right: 8, top: 8 }}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} />
+                <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="completed" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ChartContainer>
+          ) : (
+            <EmptyChart>No scheduled habit check-ins in this date range.</EmptyChart>
+          )}
+        </section>
+
+        <section className="min-w-0 border-b px-3 py-3 sm:col-span-2 sm:px-4 md:px-6 lg:px-8">
+          <div className="mb-2 flex items-center gap-2">
+            <Sprout className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold">Consistency by habit</h2>
+            <span className="ml-auto text-xs text-muted-foreground">
+              {range} days
+            </span>
+            <Link
+              href="/habits"
+              className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Manage habits
+            </Link>
+          </div>
+          {habitBreakdown.length ? (
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+              {habitBreakdown.map(
+                ({ habit, series, scheduled, completed, consistency }) => (
+                  <article
+                    key={habit.id}
+                    className="min-w-0 rounded-xl border bg-card/40 p-3"
+                  >
+                    <div className="mb-2 flex items-center gap-2.5">
+                      <span
+                        className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary"
+                        aria-hidden="true"
+                      >
+                        <HabitIcon
+                          value={habit.emoji || "sparkles"}
+                          className="size-4"
+                        />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <h3
+                          className="truncate text-sm font-semibold"
+                          title={habit.name}
+                        >
+                          {habit.name}
+                        </h3>
+                        <p className="text-[11px] text-muted-foreground">
+                          {completed} of {scheduled} scheduled check-ins
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums">
+                        {consistency === null ? "—" : `${consistency}%`}
+                      </span>
+                    </div>
+                    {scheduled ? (
+                      <ChartContainer
+                        config={habitConsistencyConfig}
+                        className="h-[140px] w-full"
+                      >
+                        <AreaChart
+                          data={series}
+                          margin={{ left: 0, right: 6, top: 4 }}
+                        >
+                          <CartesianGrid
+                            vertical={false}
+                            strokeDasharray="3 3"
+                          />
+                          <XAxis
+                            dataKey="day"
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={6}
+                            minTickGap={24}
+                          />
+                          <YAxis
+                            domain={[0, 100]}
+                            ticks={[0, 50, 100]}
+                            tickLine={false}
+                            axisLine={false}
+                            width={30}
+                            unit="%"
+                          />
+                          <ChartTooltip
+                            content={
+                              <ChartTooltipContent
+                                formatter={(value, _name, item) => {
+                                  const point = item.payload as (typeof series)[number];
+                                  return [
+                                    `${Number(value)}% (${point.completed}/${point.scheduled})`,
+                                    "Consistency",
+                                  ];
+                                }}
+                              />
+                            }
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="consistency"
+                            stroke="var(--chart-1)"
+                            fill="var(--chart-1)"
+                            fillOpacity={0.14}
+                            connectNulls
+                          />
+                        </AreaChart>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex h-[140px] items-center justify-center px-3 text-center text-xs text-muted-foreground">
+                        No scheduled days in this range.
+                      </div>
+                    )}
+                  </article>
+                )
               )}
+            </div>
+          ) : (
+            <p className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+              Create an active habit to see a consistency graph for it.
+            </p>
+          )}
         </section>
 
         <section className="min-w-0 border-b px-3 py-3 sm:px-4 md:px-6 lg:px-8">

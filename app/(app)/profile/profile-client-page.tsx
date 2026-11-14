@@ -2,14 +2,13 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
 import {
   Award,
   AtSign,
   BadgeCheck,
   BarChart3,
   BookOpen,
+  CalendarDays,
   ChevronRight,
   Eye,
   EyeOff,
@@ -17,6 +16,7 @@ import {
   LifeBuoy,
   ListChecks,
   LockKeyhole,
+  LoaderCircle,
   LogOut,
   Mountain,
   Pencil,
@@ -32,12 +32,6 @@ import { useAuth } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -48,11 +42,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { FadeIn, EASE } from "@/components/motion-fade";
+import { ProfileAvatar } from "@/components/profile-avatar";
 import { PageLoadingSkeleton } from "@/components/page-loading-skeleton";
-import { MetricCard } from "@/components/metric-card";
-import { useTodayKey } from "@/lib/use-local-storage";
+import {
+  clearLocalStorageStateCache,
+  useTodayKey,
+} from "@/lib/use-local-storage";
 import type { DayEntry, Task, TaskCompletion } from "@/lib/types";
 import { getActivityStreaks, getTaskActivity } from "@/lib/task-activity";
 import {
@@ -65,6 +60,7 @@ import {
 import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
 import {
   claimPermanentUsername,
+  loadFriendLeaderboardScores,
   loadOwnUsername,
 } from "@/lib/supabase/social-data";
 
@@ -79,6 +75,11 @@ const LINKS = [
     href: "/profile/settings",
     icon: Settings,
     title: "Settings",
+  },
+  {
+    href: "/profile/visibility",
+    icon: Eye,
+    title: "Visibility",
   },
   {
     href: "/streak",
@@ -97,25 +98,21 @@ const LINKS = [
   },
 ];
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p.charAt(0).toUpperCase())
-    .join("");
-}
-
 export default function ProfilePage() {
   const { user, updateProfile, signOut } = useAuth();
   const { reportError, schemaUnavailable } = useSupabaseDataStatus();
-  const router = useRouter();
   const today = useTodayKey();
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const [completions, setCompletions] = React.useState<TaskCompletion[]>([]);
   const [dayEntries, setDayEntries] = React.useState<DayEntry[]>([]);
+  const [leaderboardScoreResult, setLeaderboardScoreResult] = React.useState<{
+    userId: string;
+    score: number | null;
+  } | null>(null);
   const [editOpen, setEditOpen] = React.useState(false);
   const [logoutOpen, setLogoutOpen] = React.useState(false);
+  const [loggingOut, setLoggingOut] = React.useState(false);
+  const logoutInProgress = React.useRef(false);
   const [savingProfile, setSavingProfile] = React.useState(false);
   const [username, setUsername] = React.useState("");
   const [usernameLocked, setUsernameLocked] = React.useState(false);
@@ -141,6 +138,31 @@ export default function ProfilePage() {
       .catch((error: unknown) => {
         if (!active) return;
         reportError(error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [reportError, user?.id]);
+
+  React.useEffect(() => {
+    if (!user?.id) return;
+
+    let active = true;
+    const userId = user.id;
+    loadFriendLeaderboardScores()
+      .then((scores) => {
+        if (!active) return;
+        const ownScore = scores.find((score) => score.user_id === userId);
+        setLeaderboardScoreResult({
+          userId,
+          score: ownScore?.score ?? null,
+        });
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        reportError(error);
+        setLeaderboardScoreResult({ userId, score: null });
       });
 
     return () => {
@@ -320,251 +342,327 @@ export default function ProfilePage() {
         year: "numeric",
       })
     : "this month";
+  const currentUserId = user?.id;
+  const leaderboardScore =
+    leaderboardScoreResult &&
+    leaderboardScoreResult.userId === currentUserId
+      ? leaderboardScoreResult.score
+      : null;
+  const leaderboardScoreLoading = Boolean(
+    currentUserId && leaderboardScoreResult?.userId !== currentUserId
+  );
+  const scorePercentage =
+    leaderboardScore === null
+      ? null
+      : Math.max(0, Math.min(100, leaderboardScore));
 
   async function handleLogout() {
+    if (logoutInProgress.current) return;
+    logoutInProgress.current = true;
+    setLoggingOut(true);
+
     try {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 1500));
       await signOut();
-      setLogoutOpen(false);
-      router.replace("/login");
+
+      let storageClearFailed = false;
+      try {
+        window.localStorage.clear();
+      } catch {
+        storageClearFailed = true;
+      }
+      try {
+        window.sessionStorage.clear();
+      } catch {
+        storageClearFailed = true;
+      }
+      clearLocalStorageStateCache();
+
+      if (storageClearFailed) {
+        toast.warning("You’re logged out, but this browser couldn’t clear all stored data.");
+      }
+      window.location.replace("/login");
     } catch (error) {
-      reportError(error);
+      logoutInProgress.current = false;
+      setLoggingOut(false);
+      toast.error(
+        error instanceof Error
+          ? `Couldn’t log out: ${error.message}`
+          : "Couldn’t log out. Please try again."
+      );
     }
   }
 
   return (
-    <div className="flex flex-col gap-5 sm:gap-6">
-      <FadeIn>
-        <Card className="overflow-hidden border-0 bg-primary text-primary-foreground shadow-sm shadow-primary/15">
-          <CardContent className="flex items-start gap-3 p-4 sm:gap-4 sm:p-6">
-            <Avatar size="lg" className="size-16 shrink-0 rounded-2xl border-2 border-white/25">
-              <AvatarFallback className="rounded-2xl bg-white/15 text-lg text-white">
-                {initials(user?.name ?? "U")}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1 pt-0.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="max-w-full break-words font-heading text-lg font-semibold tracking-tight sm:text-xl">
-                  {user?.name}
-                </h2>
-              </div>
-              <p className="mt-0.5 truncate text-sm text-white/75">{user?.email}</p>
-              {username && (
-                <p className="mt-1 flex items-center gap-1 text-xs text-white/80">
-                  <AtSign className="size-3" />
-                  {username}
-                  {usernameLocked && (
-                    <span className="ml-1 rounded-full bg-white/15 px-2 py-0.5 text-[10px]">
-                      Permanent
-                    </span>
-                  )}
-                </p>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-10 shrink-0 text-white hover:bg-white/15 hover:text-white"
-              onClick={() => setEditOpen(true)}
-              aria-label="Edit profile"
-            >
-              <Pencil />
-            </Button>
-          </CardContent>
-          <div className="flex items-center justify-between gap-2 border-t border-white/15 px-4 py-3 text-xs sm:px-6">
-            <span className="truncate text-white/75">Member since {joined}</span>
-            <span className="flex shrink-0 items-center gap-1.5 font-medium">
-              <Flame className="size-3.5" /> {streaks.current} day streak
+    <div className="-mx-3 -my-4 flex min-h-dvh w-[calc(100%+1.5rem)] min-w-0 flex-col bg-background sm:-mx-4 sm:-my-6 sm:w-[calc(100%+2rem)] md:-mx-6 md:-my-8 md:w-[calc(100%+3rem)] lg:-mx-8 lg:-my-6 lg:w-[calc(100%+4rem)]">
+      <section
+        aria-label="Profile details"
+        className="flex flex-col items-center gap-4 border-b px-4 py-8 text-center sm:gap-5 sm:py-10"
+      >
+        <ProfileAvatar
+          name={user?.name ?? "U"}
+          className="size-40 sm:size-44"
+        />
+        <div className="flex w-full min-w-0 flex-col items-center">
+          <h1 className="break-words font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
+            {user?.name || "Your profile"}
+          </h1>
+          <p className="mt-1 break-all text-sm text-muted-foreground">
+            {user?.email}
+          </p>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            {user?.bio?.trim() ||
+              "Add a short bio to tell your circle a little about you."}
+          </p>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+            {username && (
+              <span className="inline-flex items-center gap-1.5">
+                <AtSign className="size-3.5" />
+                {username}
+                {usernameLocked && (
+                  <>
+                    <LockKeyhole className="ml-1 size-3" />
+                    Permanent
+                  </>
+                )}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5">
+              <CalendarDays className="size-3.5" />
+              Member since {joined}
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-primary">
+              <Flame className="size-3.5" />
+              {streaks.current} day streak
             </span>
           </div>
-        </Card>
-      </FadeIn>
-
-      <section className="space-y-2.5" aria-labelledby="profile-activity-heading">
-        <div className="flex items-center justify-between px-1">
-          <h3 id="profile-activity-heading" className="font-heading text-base font-semibold">
-            Your activity
-          </h3>
-        </div>
-        <div className="grid grid-cols-2 items-stretch gap-2 sm:grid-cols-4 sm:gap-2.5">
-          {[
-            { label: "Task completions", value: String(activity.length), detail: activity.length ? "Completed tasks recorded" : "Complete a task to start tracking", icon: ListChecks },
-            { label: "Current streak", value: `${streaks.current} days`, detail: streaks.current ? "Consecutive active days" : "Complete a task today to begin", icon: Flame },
-            { label: "Days logged", value: String(dayEntries.length), detail: dayEntries.length ? "Daily check-ins saved" : "Log your first day", icon: Smile },
-            { label: "Completion", value: `${completionRate}%`, detail: tasks.length ? "Tasks currently marked done" : "Add tasks to calculate progress", icon: BarChart3 },
-          ].map((stat, i) => {
-            return (
-              <MetricCard
-                key={stat.label}
-                label={stat.label}
-                value={stat.value}
-                detail={stat.detail}
-                icon={stat.icon}
-                delay={i * 0.04}
-                compact
-              />
-            );
-          })}
+          <div className="mt-5 flex items-center gap-3 rounded-2xl border bg-card px-4 py-3 text-left">
+            <div
+              role={scorePercentage === null ? "img" : "progressbar"}
+              aria-label={
+                scorePercentage === null
+                  ? "30-day leaderboard score is not available"
+                  : `30-day leaderboard score: ${scorePercentage.toFixed(1)} out of 100`
+              }
+              aria-valuemin={scorePercentage === null ? undefined : 0}
+              aria-valuemax={scorePercentage === null ? undefined : 100}
+              aria-valuenow={scorePercentage ?? undefined}
+              className="grid size-[76px] shrink-0 place-items-center rounded-full p-1"
+              style={{
+                background: `conic-gradient(var(--primary) ${scorePercentage ?? 0}%, var(--muted) 0)`,
+              }}
+            >
+              <span className="grid size-full place-items-center rounded-full bg-card font-heading text-base font-semibold tabular-nums">
+                {leaderboardScoreLoading
+                  ? "…"
+                  : scorePercentage === null
+                    ? "—"
+                    : scorePercentage.toFixed(1)}
+              </span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Leaderboard score</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {leaderboardScoreLoading
+                  ? "Calculating your last 30 days."
+                  : scorePercentage === null
+                    ? "Complete scheduled tasks to establish your score."
+                    : "Same weighted 30-day score used on the leaderboards."}
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
-      <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
-        <FadeIn delay={0.08} className="min-w-0 lg:col-span-2">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle>Shortcuts</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-hidden rounded-2xl border bg-muted/20 px-3 sm:px-4">
-                {LINKS.map((link, i) => {
-                  const Icon = link.icon;
-                  return (
-                    <motion.div
-                      key={link.href}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.35, delay: i * 0.04, ease: EASE }}
-                      className="border-b last:border-b-0"
-                    >
-                      <Link
-                        href={link.href}
-                        className="group -mx-3 flex min-h-14 items-center gap-3 px-3 py-2.5 transition-colors duration-200 hover:bg-primary/5 active:bg-primary/10 sm:-mx-4 sm:px-4"
-                      >
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform duration-200 group-hover:scale-105">
-                          <Icon className="size-4" />
-                        </span>
-                        <span className="min-w-0 flex-1 text-sm font-medium">
-                          {link.title}
-                        </span>
-                        <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
-                      </Link>
-                    </motion.div>
-                  );
-                })}
-                <div className="border-b">
-                  <Link
-                    href="/profile/help"
-                    className="group -mx-3 flex min-h-14 items-center gap-3 px-3 py-2.5 transition-colors duration-200 hover:bg-primary/5 active:bg-primary/10 sm:-mx-4 sm:px-4"
-                  >
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform duration-200 group-hover:scale-105">
-                      <LifeBuoy className="size-4" />
-                    </span>
-                    <span className="min-w-0 flex-1 text-sm font-medium">
-                      Help & support
-                    </span>
-                    <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
-                  </Link>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setLogoutOpen(true)}
-                  className="group -mx-3 flex min-h-14 w-[calc(100%+1.5rem)] items-center gap-3 px-3 py-2.5 text-left transition-colors duration-200 hover:bg-destructive/5 active:bg-destructive/10 sm:-mx-4 sm:w-[calc(100%+2rem)] sm:px-4"
-                >
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
-                    <LogOut className="size-4" />
-                  </span>
-                  <span className="min-w-0 flex-1 text-sm font-medium text-destructive">
-                    Log out
-                  </span>
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-        </FadeIn>
+      <div className="px-4 py-4 md:px-6 lg:px-8">
+        <Button
+          variant="outline"
+          size="lg"
+          className="w-full sm:ml-auto sm:w-auto"
+          onClick={() => setEditOpen(true)}
+        >
+          <Pencil />
+          Edit profile
+        </Button>
+      </div>
 
-        <FadeIn delay={0.14} className="min-w-0">
-          <Card className="h-full">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="flex items-center gap-2">
-                <Trophy className="size-4 text-primary" /> Achievements
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary">
-                  {achievements.filter((achievement) => achievement.unlocked).length} / {achievements.length}
-                </Badge>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={
-                    showAchievementTips
-                      ? "Hide achievement requirements"
-                      : "Show achievement requirements"
-                  }
-                  aria-pressed={showAchievementTips}
-                  title={
-                    showAchievementTips
-                      ? "Hide achievement requirements"
-                      : "Show how to unlock achievements"
-                  }
-                  onClick={() =>
-                    setShowAchievementTips((visible) => !visible)
-                  }
-                >
-                  {showAchievementTips ? <EyeOff /> : <Eye />}
-                </Button>
+      <section
+        aria-label="Profile activity summary"
+        className="grid grid-cols-2 gap-3 border-b p-4 sm:grid-cols-4 sm:gap-4 md:px-6 lg:px-8"
+      >
+        {[
+          {
+            label: "Task completions",
+            value: String(activity.length),
+            detail: activity.length
+              ? "Completed tasks recorded"
+              : "Complete a task to start tracking",
+            icon: ListChecks,
+          },
+          {
+            label: "Current streak",
+            value: `${streaks.current} days`,
+            detail: streaks.current
+              ? "Consecutive active days"
+              : "Complete a task today to begin",
+            icon: Flame,
+          },
+          {
+            label: "Days logged",
+            value: String(dayEntries.length),
+            detail: dayEntries.length
+              ? "Daily check-ins saved"
+              : "Log your first day",
+            icon: Smile,
+          },
+          {
+            label: "Completion",
+            value: `${completionRate}%`,
+            detail: tasks.length
+              ? "Tasks currently marked done"
+              : "Add tasks to calculate progress",
+            icon: BarChart3,
+          },
+        ].map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <div
+              key={stat.label}
+              className="flex min-h-32 min-w-0 flex-col items-start gap-3 rounded-2xl border bg-card p-3 sm:p-4"
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Icon className="size-4" />
+              </span>
+              <div className="min-w-0 w-full">
+                <p className="text-xs text-muted-foreground">{stat.label}</p>
+                <p className="mt-1 max-w-full truncate font-heading text-xl font-semibold leading-tight tabular-nums sm:text-2xl">
+                  {stat.value}
+                </p>
+                <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+                  {stat.detail}
+                </p>
               </div>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-2.5 sm:gap-3">
-              {achievements.map((a, i) => {
-                const Icon = a.icon;
-                return (
-                  <motion.div
-                    key={a.title}
-                    initial={{ opacity: 0, scale: 0.92 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.35, delay: i * 0.04, ease: EASE }}
-                    className={`relative flex min-h-28 flex-col items-center justify-center gap-2 rounded-2xl border p-2.5 text-center transition-colors sm:min-h-32 sm:p-3 ${
-                      a.unlocked
-                        ? "border-primary/20 bg-primary/[0.04] shadow-sm shadow-primary/5"
-                        : "bg-muted/30 text-muted-foreground"
+            </div>
+          );
+        })}
+      </section>
+
+      <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 px-4 py-5 sm:grid-cols-2 sm:gap-5 md:px-6 lg:px-8">
+        <section className="min-w-0 py-2">
+          <div className="mb-2 flex items-center gap-2">
+            <Settings className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold">Shortcuts</h2>
+          </div>
+          <div className="overflow-hidden rounded-2xl border bg-card">
+            {LINKS.map((link) => {
+              const Icon = link.icon;
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="group flex min-h-14 items-center gap-3 border-b px-4 py-2 transition-colors last:border-b-0 hover:bg-muted/50"
+                >
+                  <Icon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 text-sm font-medium">
+                    {link.title}
+                  </span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                </Link>
+              );
+            })}
+            <Link
+              href="/profile/help"
+              className="group flex min-h-14 items-center gap-3 border-b px-4 py-2 transition-colors hover:bg-muted/50"
+            >
+              <LifeBuoy className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 text-sm font-medium">
+                Help &amp; support
+              </span>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+            </Link>
+            <button
+              type="button"
+              onClick={() => setLogoutOpen(true)}
+              className="group flex min-h-14 w-full items-center gap-3 border-b px-4 py-2 text-left text-destructive transition-colors hover:bg-destructive/5"
+            >
+              <LogOut className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1 text-sm font-medium">Log out</span>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+            </button>
+          </div>
+        </section>
+
+        <section className="min-w-0 py-2">
+          <div className="mb-2 flex items-center gap-2">
+            <Trophy className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold">Achievements</h2>
+            <Badge variant="secondary" className="ml-auto">
+              {achievements.filter((achievement) => achievement.unlocked).length}
+              {" / "}
+              {achievements.length}
+            </Badge>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={
+                showAchievementTips
+                  ? "Hide achievement requirements"
+                  : "Show achievement requirements"
+              }
+              aria-pressed={showAchievementTips}
+              title={
+                showAchievementTips
+                  ? "Hide achievement requirements"
+                  : "Show how to unlock achievements"
+              }
+              onClick={() => setShowAchievementTips((visible) => !visible)}
+            >
+              {showAchievementTips ? <EyeOff /> : <Eye />}
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {achievements.map((achievement) => {
+              const Icon = achievement.icon;
+              return (
+                <div
+                  key={achievement.title}
+                  className="flex min-w-0 items-start gap-3 rounded-2xl border bg-card p-4"
+                >
+                  <Icon
+                    className={`mt-0.5 size-4 shrink-0 ${
+                      achievement.unlocked
+                        ? "text-primary"
+                        : "text-muted-foreground"
                     }`}
-                  >
-                    <span
-                      className={`flex size-11 items-center justify-center rounded-2xl border shadow-sm sm:size-12 ${
-                        a.unlocked
-                          ? "border-primary/20 bg-background"
-                          : "border-border bg-muted"
-                      }`}
-                      aria-hidden
-                    >
-                      <Icon
-                        className={`size-5 ${
-                          a.unlocked ? "text-primary" : "text-muted-foreground"
-                        }`}
-                      />
-                    </span>
-                    <span className="text-xs font-semibold">{a.title}</span>
-                    <span
-                      className={`text-[10px] font-medium uppercase tracking-wide ${
-                        a.unlocked ? "text-primary" : "text-muted-foreground"
-                      }`}
-                    >
-                      {a.unlocked ? "Unlocked" : "Locked"}
-                    </span>
-                    {showAchievementTips && (
-                      <span className="text-[11px] leading-4 text-muted-foreground">
-                        {a.tip}
-                      </span>
-                    )}
-                    <span
-                      className={`absolute right-2 top-2 ${
-                        a.unlocked ? "text-primary" : "text-muted-foreground"
-                      }`}
-                      aria-hidden
-                    >
-                      {a.unlocked ? (
-                        <BadgeCheck className="size-4" />
-                      ) : (
-                        <LockKeyhole className="size-3.5" />
-                      )}
-                    </span>
-                  </motion.div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        </FadeIn>
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{achievement.title}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {showAchievementTips
+                        ? achievement.tip
+                        : achievement.unlocked
+                          ? "Unlocked"
+                          : "Locked"}
+                    </p>
+                  </div>
+                  {achievement.unlocked ? (
+                    <BadgeCheck
+                      className="size-4 shrink-0 text-primary"
+                      aria-label="Unlocked"
+                    />
+                  ) : (
+                    <LockKeyhole
+                      className="size-3.5 shrink-0 text-muted-foreground"
+                      aria-label="Locked"
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
       </div>
 
       {/* Edit profile dialog */}
@@ -579,7 +677,7 @@ export default function ProfilePage() {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="profile-username">Username</Label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <div className="relative min-w-0 flex-1">
                   <AtSign className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -599,6 +697,7 @@ export default function ProfilePage() {
                 <Button
                   type="button"
                   variant={usernameLocked ? "secondary" : "outline"}
+                  className="w-full sm:w-auto"
                   onClick={() => void saveUsername()}
                   disabled={
                     usernameLocked ||
@@ -657,20 +756,45 @@ export default function ProfilePage() {
       </Dialog>
 
       {/* Logout dialog */}
-      <Dialog open={logoutOpen} onOpenChange={setLogoutOpen}>
+      <Dialog
+        open={logoutOpen}
+        onOpenChange={(open) => {
+          if (!loggingOut) setLogoutOpen(open);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Log out of Taskflow?</DialogTitle>
-            <DialogDescription className="sr-only">
-              You&apos;ll be signed out of your account on this device.
+            <DialogTitle>Log out?</DialogTitle>
+            <DialogDescription>
+              Your account data will stay saved. This clears your session and
+              stored data from this device.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setLogoutOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setLogoutOpen(false)}
+              disabled={loggingOut}
+            >
               Stay logged in
             </Button>
-            <Button variant="destructive" onClick={handleLogout}>
-              <LogOut /> Log out
+            <Button
+              variant="destructive"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              aria-busy={loggingOut}
+            >
+              {loggingOut ? (
+                <>
+                  <LoaderCircle className="animate-spin" aria-hidden="true" />
+                  Logging out…
+                </>
+              ) : (
+                <>
+                  <LogOut aria-hidden="true" />
+                  Log out
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

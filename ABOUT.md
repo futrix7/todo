@@ -21,7 +21,7 @@ is visible, gentle, and yours.
   - [Days and mood check-ins](#days-and-mood-check-ins)
   - [Friends](#friends)
   - [Challenges](#challenges)
-  - [Friends leaderboard](#friends-leaderboard)
+  - [Leaderboards](#leaderboards)
   - [Notifications](#notifications)
   - [Profile](#profile)
   - [Analytics](#analytics)
@@ -44,7 +44,7 @@ is visible, gentle, and yours.
 - **Streaks** for your overall routine and for individual tracked tasks.
 - **Mood check-ins** with emoji ratings, notes, and up/down day ratings.
 - **Analytics** across task activity, categories, focus time, and mood.
-- **Friends** with requests, profiles, and a friends-only leaderboard.
+- **Friends** with requests, profiles, and friends and global leaderboards.
 - **Community challenges** across Fitness, Mind, Discipline, Productivity,
   and Money.
 - **Light, dark, and system themes** with a calm blue accent.
@@ -73,6 +73,7 @@ is visible, gentle, and yours.
 | Profile | `/profile` | Signed-in users |
 | Analytics | `/profile/analytics` | Signed-in users |
 | Settings | `/profile/settings` | Signed-in users |
+| Visibility | `/profile/visibility` | Signed-in users |
 | Help & support | `/profile/help` | Signed-in users |
 
 Signed-out visitors are redirected to login when they open a private page.
@@ -212,8 +213,9 @@ not ask for.
 
 ### Challenges
 
-Challenges are shared 21-, 30-, 75-, or 100-day commitments organized by
-category.
+Challenges are public commitments organized by category. The starter catalog
+includes 21-, 30-, 75-, and 100-day challenges, and signed-in users can create
+their own.
 
 **Categories and icons**
 
@@ -231,17 +233,37 @@ category.
   Productivity, Money).
 - Each card shows the category, target length, description, and the number of
   participants.
+- Create a challenge with a name, category, duration, and description; it is
+  available to all signed-in users.
 - Joining a challenge adds its daily task to your Tasks page, so progress is
   tracked where you already work.
-- Only participant totals are shared publicly — never personal check-in data.
+- Participant totals are shared. Display names and usernames appear in a
+  challenge's details only when those members have opted in on Profile →
+  Visibility. Tasks and check-in details are never shared.
+- The Leaderboard page includes an overall friends podium and a
+  challenge-specific podium with completed-day progress. It shows total
+  challenge membership while hiding the names and progress of members who
+  opted out.
+- Accounts without tasks get a short list of starter challenge recommendations.
 - Share a challenge using the native share sheet when available, or copy a
   direct link to that challenge card.
 - A joined counter at the top of the page shows how many challenges you are
   part of.
 
-### Friends leaderboard
+### Leaderboards
 
-A friends-only scoreboard for the last 30 days.
+The friends and global scoreboards use a rolling 30-day period. The friends
+board includes you and your accepted friends. The global board includes all
+signed-in members with a score, showing the top 100 and your own rank.
+Display names, usernames, and aggregate rates are visible on the global board;
+tasks and notes remain private. Regional rankings are not enabled.
+
+The top three appear on a podium. Switch to **By challenge** to select a
+community challenge and compare completed days; the summary also shows your
+rank, progress, and total participants. Challenge rankings show only members
+who opted in to share their status, plus your own entry. Apply the updated
+`supabase/schema.sql` in Supabase to install the global and challenge
+leaderboard RPCs.
 
 **Your score** is shown out of 100 and is built from three weighted rates:
 
@@ -284,6 +306,9 @@ current streak. Edit your name and bio from a dialog.
 
 **Activity stats.** Task completions, current streak, days logged, and today's
 completion percentage, each with a short explanation.
+
+**Leaderboard score.** The profile ring shows the same weighted 30-day score
+used by the friends and global leaderboards.
 
 **Shortcuts.** Quick links to Analytics, Settings, Streaks, Days, and Tasks,
 plus Help & support and Log out.
@@ -354,19 +379,40 @@ Account and preference controls in one place.
 ### Accounts and authentication
 
 - **Register** with name, email, and password (minimum 6 characters). If email
-  verification is required, a dialog confirms where the verification link was
-  sent and lets you go back to correct your details.
+  verification is required, enter the six-digit code sent to your email. The
+  code can be resent after a short cooldown.
 - **Log in** with email and password, with a link to password recovery.
-- **Forgot password** sends a reset link and confirms that a link was sent
-  without revealing whether an account exists.
+- **Forgot password** sends a six-digit reset code, verifies it, and lets you
+  choose a new password without revealing whether an account exists.
 - **Reset password** verifies the reset link, checks session state, and lets
-  you set a new password with confirmation. Expired or invalid links get a
-  clear recovery path.
+  you set a new password with confirmation. This route also supports existing
+  reset links.
 - **Session protection.** Private routes require a valid session. A client-side
   guard mirrors the server check during hydration and navigation.
 - **Clear configuration errors.** If the app's backend connection is not
   configured, the auth screens explain what is missing instead of failing
   silently.
+
+#### Supabase authentication email
+
+Signup verification and password recovery use Supabase Auth directly. No
+third-party email provider or API key is required. Leave custom SMTP disabled
+in **Authentication → Notifications → Email → SMTP Settings** to use
+Supabase's default email service.
+
+In Supabase **Authentication → Providers → Email**, enable **Confirm email**
+for signup verification. In **Authentication → Email Templates**, update both
+**Confirm signup** and **Reset password** to show the six-digit code using
+`{{ .Token }}`. For example:
+
+```html
+<p>Your Taskflow verification code is <strong>{{ .Token }}</strong>.</p>
+```
+
+Supabase's default email service is intended for development: it restricts
+delivery to authorized project/team addresses and has low rate limits. See the
+[Supabase SMTP guide](https://supabase.com/docs/guides/auth/auth-smtp) for its
+current limitations.
 
 ---
 
@@ -527,8 +573,9 @@ simple footer.
   notification belongs to your account and is protected per user.
 - Friends see only your display name, username, bio, and streak statistics.
   Your email address is never shared with friends.
-- Challenge participation exposes only your membership, never your private
-  check-in details.
+- New accounts show joined challenge status by default. Change it to No in
+  Profile → Visibility to hide your name and username from participant lists;
+  your tasks and check-in details remain private either way.
 - There are no demo or fake friend accounts.
 - **Clear all data** permanently removes your activity while keeping your
   account and profile, and requires typing `DELETE` to confirm.
@@ -547,8 +594,9 @@ simple footer.
   page, but are not yet delivered as push or email notifications.
 - **Challenge progress** is tracked through the daily task created when you
   join a challenge; there is no separate challenge check-in screen.
-- **Leaderboard scoring** uses a rolling 30-day window and only includes you
-  and your accepted friends who have a score.
+- **Leaderboard scoring** uses a rolling 30-day window. Friends rankings
+  include your accepted friends; the global board includes all signed-in
+  members who have a score.
 - **Achievements** are evaluated from your activity and are not shareable
   badges.
 - **Social features** cover friend requests, profiles, notifications, a

@@ -9,9 +9,12 @@ import {
   Check,
   Dumbbell,
   Flame,
+  Info,
   PiggyBank,
+  Plus,
   Share2,
   ShieldCheck,
+  Sparkles,
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
@@ -20,16 +23,31 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { CHALLENGE_CATEGORIES } from "@/lib/challenges";
 import type { ChallengeCategory, ChallengeDefinition } from "@/lib/challenges";
 import { useAuth } from "@/lib/auth";
 import {
+  createCommunityChallenge,
   joinChallenge,
   loadChallengeCatalog,
   loadChallengeSnapshot,
+  loadVisibleChallengeParticipants,
   type ChallengeSnapshot,
+  type VisibleChallengeParticipant,
 } from "@/lib/supabase/challenge-data";
+import { loadTasks } from "@/lib/supabase/task-data";
 import { useTodayKey } from "@/lib/use-local-storage";
 import { cn } from "@/lib/utils";
 
@@ -71,6 +89,7 @@ function ChallengeCard({
   joinedOn,
   participantCount,
   busy,
+  onDetails,
   onJoin,
   onShare,
 }: {
@@ -78,6 +97,7 @@ function ChallengeCard({
   joinedOn?: string;
   participantCount: number;
   busy: boolean;
+  onDetails: () => void;
   onJoin: () => void;
   onShare: () => void;
 }) {
@@ -151,20 +171,30 @@ function ChallengeCard({
       </div>
 
       <footer className="flex items-center gap-2 border-t bg-muted/20 px-4 py-3 sm:px-5">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 px-3"
+          aria-label={`Details for ${challenge.name}`}
+          onClick={onDetails}
+        >
+          <Info />
+          <span className="hidden sm:inline">Details</span>
+        </Button>
         {joined ? (
-          <Button type="button" className="h-10 flex-1" disabled>
+          <Button type="button" className="h-10 flex-1 px-2 sm:px-3" disabled>
             <Check />
-            Joined
+            <span className="truncate">Joined</span>
           </Button>
         ) : (
           <Button
             type="button"
-            className="h-10 flex-1"
+            className="h-10 min-w-0 flex-1 px-2 sm:px-3"
             disabled={busy}
             onClick={onJoin}
           >
             <UsersRound />
-            {busy ? "Joining…" : "Join challenge"}
+            <span className="truncate">{busy ? "Joining…" : "Join challenge"}</span>
           </Button>
         )}
         <Button
@@ -175,7 +205,7 @@ function ChallengeCard({
           onClick={onShare}
         >
           <Share2 />
-          Share
+          <span className="hidden sm:inline">Share</span>
         </Button>
       </footer>
     </Card>
@@ -194,16 +224,47 @@ export default function ChallengesClientPage() {
   const [busyChallengeId, setBusyChallengeId] = React.useState<string | null>(
     null
   );
+  const [hasNoTasks, setHasNoTasks] = React.useState(false);
+  const [taskCheckError, setTaskCheckError] = React.useState<string | null>(null);
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [detailsChallenge, setDetailsChallenge] =
+    React.useState<ChallengeDefinition | null>(null);
+  const [visibleParticipants, setVisibleParticipants] = React.useState<
+    VisibleChallengeParticipant[]
+  >([]);
+  const [participantsLoading, setParticipantsLoading] = React.useState(false);
+  const [participantsError, setParticipantsError] = React.useState<string | null>(
+    null
+  );
+  const participantsRequestId = React.useRef(0);
+  const [savingChallenge, setSavingChallenge] = React.useState(false);
+  const [challengeName, setChallengeName] = React.useState("");
+  const [challengeCategory, setChallengeCategory] =
+    React.useState<ChallengeCategory>("Fitness");
+  const [challengeTargetDays, setChallengeTargetDays] = React.useState("7");
+  const [challengeDescription, setChallengeDescription] = React.useState("");
 
   const refresh = React.useCallback(async () => {
     if (!userId || !today) return;
-    const catalog = await loadChallengeCatalog();
+    const [catalog, taskResult] = await Promise.all([
+      loadChallengeCatalog(),
+      loadTasks(userId).then(
+        (tasks) => ({ status: "loaded" as const, tasks }),
+        (error: unknown) => ({ status: "error" as const, error })
+      ),
+    ]);
     const nextSnapshot = await loadChallengeSnapshot(
       userId,
       catalog.map((challenge) => challenge.id)
     );
     setChallenges(catalog);
     setSnapshot(nextSnapshot);
+    setHasNoTasks(
+      taskResult.status === "loaded" && taskResult.tasks.length === 0
+    );
+    setTaskCheckError(
+      taskResult.status === "error" ? getErrorMessage(taskResult.error) : null
+    );
     setLoadError(null);
   }, [today, userId]);
 
@@ -211,8 +272,14 @@ export default function ChallengesClientPage() {
     let active = true;
     if (!userId || !today) return;
 
-    loadChallengeCatalog()
-      .then(async (catalog) => {
+    Promise.all([
+      loadChallengeCatalog(),
+      loadTasks(userId).then(
+        (tasks) => ({ status: "loaded" as const, tasks }),
+        (error: unknown) => ({ status: "error" as const, error })
+      ),
+    ])
+      .then(async ([catalog, taskResult]) => {
         const nextSnapshot = await loadChallengeSnapshot(
           userId,
           catalog.map((challenge) => challenge.id)
@@ -220,6 +287,14 @@ export default function ChallengesClientPage() {
         if (!active) return;
         setChallenges(catalog);
         setSnapshot(nextSnapshot);
+        setHasNoTasks(
+          taskResult.status === "loaded" && taskResult.tasks.length === 0
+        );
+        setTaskCheckError(
+          taskResult.status === "error"
+            ? getErrorMessage(taskResult.error)
+            : null
+        );
         setLoadError(null);
       })
       .catch((error: unknown) => {
@@ -248,6 +323,45 @@ export default function ChallengesClientPage() {
       ? challenges
       : challenges.filter((challenge) => challenge.category === filter);
   const joinedCount = snapshot?.participations.length ?? 0;
+  const recommendations = challenges
+    .filter(
+      (challenge) =>
+        !participationById.has(challenge.id) && challenge.targetDays <= 30
+    )
+    .sort((a, b) => a.targetDays - b.targetDays)
+    .slice(0, 3);
+
+  async function openChallengeDetails(challenge: ChallengeDefinition) {
+    const requestId = ++participantsRequestId.current;
+    setDetailsChallenge(challenge);
+    setVisibleParticipants([]);
+    setParticipantsError(null);
+    setParticipantsLoading(true);
+    try {
+      const participants = await loadVisibleChallengeParticipants(challenge.id);
+      if (requestId === participantsRequestId.current) {
+        setVisibleParticipants(participants);
+      }
+    } catch (error) {
+      if (requestId === participantsRequestId.current) {
+        setParticipantsError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load visible participants."
+        );
+      }
+    } finally {
+      if (requestId === participantsRequestId.current) {
+        setParticipantsLoading(false);
+      }
+    }
+  }
+
+  function closeChallengeDetails() {
+    participantsRequestId.current += 1;
+    setDetailsChallenge(null);
+    setParticipantsLoading(false);
+  }
 
   async function runChallengeAction(
     challenge: ChallengeDefinition,
@@ -305,6 +419,58 @@ export default function ChallengesClientPage() {
     }
   }
 
+  async function createChallenge(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!userId) {
+      toast.error("Sign in to create a challenge.");
+      return;
+    }
+
+    const name = challengeName.trim();
+    const description = challengeDescription.trim();
+    const targetDays = Number(challengeTargetDays);
+    if (name.length < 3 || name.length > 80) {
+      toast.error("Challenge name must be between 3 and 80 characters.");
+      return;
+    }
+    if (!Number.isInteger(targetDays) || targetDays < 1 || targetDays > 365) {
+      toast.error("Choose a duration between 1 and 365 days.");
+      return;
+    }
+    if (description.length < 10 || description.length > 500) {
+      toast.error("Description must be between 10 and 500 characters.");
+      return;
+    }
+
+    setSavingChallenge(true);
+    try {
+      await createCommunityChallenge({
+        id: `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "challenge"}-${crypto.randomUUID().slice(0, 8)}`,
+        name,
+        category: challengeCategory,
+        targetDays,
+        description,
+      });
+      setChallengeName("");
+      setChallengeCategory("Fitness");
+      setChallengeTargetDays("7");
+      setChallengeDescription("");
+      setCreateOpen(false);
+      toast.success("Your challenge is now available to everyone.");
+      try {
+        await refresh();
+      } catch (error) {
+        const message = getErrorMessage(error);
+        setLoadError(message);
+        toast.error(`Challenge created, but the list could not be refreshed: ${message}`);
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setSavingChallenge(false);
+    }
+  }
+
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
       <header className="flex min-h-20 flex-wrap items-center justify-between gap-3 border-b pb-4">
@@ -324,15 +490,25 @@ export default function ChallengesClientPage() {
           </h1>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground sm:text-sm">
             Join a community challenge to add its daily task to your Tasks page.
-            Only participant totals are shared.
+            Participant names appear only when they opt in.
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-          <Flame className="size-4 text-primary" />
-          <span className="font-semibold tabular-nums">{joinedCount}</span>
-          <span className="text-muted-foreground">
-            {joinedCount === 1 ? "challenge joined" : "challenges joined"}
-          </span>
+        <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto">
+          <Button
+            type="button"
+            className="min-h-10 flex-1 sm:flex-none"
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus />
+            Create challenge
+          </Button>
+          <div className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm sm:flex-none">
+            <Flame className="size-4 text-primary" />
+            <span className="font-semibold tabular-nums">{joinedCount}</span>
+            <span className="text-muted-foreground">
+              {joinedCount === 1 ? "challenge joined" : "challenges joined"}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -355,6 +531,64 @@ export default function ChallengesClientPage() {
             Try again
           </Button>
         </div>
+      )}
+      {taskCheckError && (
+        <p
+          role="alert"
+          className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-muted-foreground"
+        >
+          We couldn’t check your tasks, so starter recommendations are
+          unavailable. {taskCheckError}
+        </p>
+      )}
+
+      {!loading && hasNoTasks && recommendations.length > 0 && (
+        <section
+          className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-4 sm:p-5"
+          aria-labelledby="recommended-challenges-title"
+        >
+          <div className="mb-4 flex items-start gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Sparkles className="size-4" />
+            </span>
+            <div>
+              <h2
+                id="recommended-challenges-title"
+                className="font-heading text-base font-semibold"
+              >
+                A good place to start
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Pick a short challenge to add your first daily task.
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {recommendations.map((challenge) => (
+              <Card
+                key={challenge.id}
+                className="flex min-w-0 flex-col gap-3 rounded-xl p-4"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{challenge.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {challenge.targetDays} days · {challenge.category}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-auto w-full"
+                  onClick={() => void openChallengeDetails(challenge)}
+                >
+                  <Info />
+                  View details
+                </Button>
+              </Card>
+            ))}
+          </div>
+        </section>
       )}
 
       <div className="flex flex-col gap-3 border-b pb-3 sm:flex-row sm:items-center sm:justify-between">
@@ -409,8 +643,9 @@ export default function ChallengesClientPage() {
                 <Skeleton className="h-12 w-full rounded-xl" />
                 <Skeleton className="mt-auto h-5 w-28" />
                 <div className="flex gap-2 border-t pt-4">
-                  <Skeleton className="h-11 flex-1 rounded-lg" />
-                  <Skeleton className="h-11 w-24 rounded-lg" />
+                  <Skeleton className="size-10 shrink-0 rounded-lg" />
+                  <Skeleton className="h-10 min-w-0 flex-1 rounded-lg" />
+                  <Skeleton className="size-10 shrink-0 rounded-lg sm:w-24" />
                 </div>
               </div>
             </div>
@@ -435,6 +670,7 @@ export default function ChallengesClientPage() {
                   statsById.get(challenge.id)?.participant_count ?? 0
                 }
                 busy={busyChallengeId === challenge.id}
+                onDetails={() => void openChallengeDetails(challenge)}
                 onJoin={() =>
                   void runChallengeAction(
                     challenge,
@@ -448,6 +684,207 @@ export default function ChallengesClientPage() {
           ))}
         </div>
       )}
+
+      <Drawer
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        showSwipeHandle
+        swipeDirection="down"
+      >
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Create a challenge</DrawerTitle>
+            <DrawerDescription>
+              Create a public challenge that any signed-in member can join.
+            </DrawerDescription>
+          </DrawerHeader>
+          <form
+            onSubmit={(event) => void createChallenge(event)}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
+              <div className="space-y-2">
+                <Label htmlFor="challenge-name">Name</Label>
+                <Input
+                  id="challenge-name"
+                  value={challengeName}
+                  onChange={(event) => setChallengeName(event.target.value)}
+                  minLength={3}
+                  maxLength={80}
+                  placeholder="For example, 10-minute daily walk"
+                  required
+                  disabled={savingChallenge}
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="challenge-category">Category</Label>
+                  <select
+                    id="challenge-category"
+                    value={challengeCategory}
+                    onChange={(event) => {
+                      const category = CHALLENGE_CATEGORIES.find(
+                        (candidate) => candidate === event.target.value
+                      );
+                      if (category) setChallengeCategory(category);
+                    }}
+                    disabled={savingChallenge}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {CHALLENGE_CATEGORIES.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="challenge-target-days">Duration (days)</Label>
+                  <Input
+                    id="challenge-target-days"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={365}
+                    step={1}
+                    value={challengeTargetDays}
+                    onChange={(event) =>
+                      setChallengeTargetDays(event.target.value)
+                    }
+                    required
+                    disabled={savingChallenge}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="challenge-description">Description</Label>
+                <Textarea
+                  id="challenge-description"
+                  value={challengeDescription}
+                  onChange={(event) =>
+                    setChallengeDescription(event.target.value)
+                  }
+                  minLength={10}
+                  maxLength={500}
+                  rows={4}
+                  placeholder="Explain what participants will do each day."
+                  required
+                  disabled={savingChallenge}
+                />
+                <p className="text-xs text-muted-foreground">
+                  10–500 characters. Your challenge will be visible to all signed-in users.
+                </p>
+              </div>
+            </div>
+            <DrawerFooter className="border-t bg-popover sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={savingChallenge}
+                onClick={() => setCreateOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingChallenge}>
+                {savingChallenge ? "Creating…" : "Create challenge"}
+              </Button>
+            </DrawerFooter>
+          </form>
+        </DrawerContent>
+      </Drawer>
+
+      <Drawer
+        open={Boolean(detailsChallenge)}
+        onOpenChange={(open) => {
+          if (!open) closeChallengeDetails();
+        }}
+        showSwipeHandle
+        swipeDirection="down"
+      >
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>{detailsChallenge?.name ?? "Challenge details"}</DrawerTitle>
+            <DrawerDescription>
+              Review the challenge and see members who chose to show their participation.
+            </DrawerDescription>
+          </DrawerHeader>
+          {detailsChallenge && (
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
+              <div className="flex items-center gap-3">
+                <span
+                  className={cn(
+                    "flex size-11 shrink-0 items-center justify-center rounded-xl",
+                    CATEGORY_STYLES[detailsChallenge.category]
+                  )}
+                  aria-hidden
+                >
+                  {React.createElement(CATEGORY_ICONS[detailsChallenge.category], {
+                    className: "size-5",
+                  })}
+                </span>
+                <div>
+                  <p className="font-semibold">{detailsChallenge.category}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {detailsChallenge.targetDays} days
+                  </p>
+                </div>
+              </div>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                {detailsChallenge.description}
+              </p>
+              <section className="space-y-3 border-t pt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold">Visible participants</h3>
+                  <span className="text-xs text-muted-foreground">
+                    {statsById.get(detailsChallenge.id)?.participant_count ?? 0} joined
+                  </span>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Only members who opted in to show their challenge status appear here.
+                </p>
+                {participantsLoading ? (
+                  <p className="text-sm text-muted-foreground" role="status">
+                    Loading participants…
+                  </p>
+                ) : participantsError ? (
+                  <p className="text-sm text-destructive" role="alert">
+                    {participantsError}
+                  </p>
+                ) : visibleParticipants.length > 0 ? (
+                  <ul className="divide-y rounded-xl border">
+                    {visibleParticipants.map((participant) => (
+                      <li
+                        key={`${participant.username}-${participant.displayName}`}
+                        className="flex min-w-0 items-center justify-between gap-3 px-3 py-2.5"
+                      >
+                        <span className="truncate text-sm font-medium">
+                          {participant.displayName}
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          @{participant.username}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="rounded-xl border border-dashed px-3 py-4 text-center text-sm text-muted-foreground">
+                    No participants have chosen to show their status yet.
+                  </p>
+                )}
+              </section>
+            </div>
+          )}
+          <DrawerFooter className="border-t bg-popover sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeChallengeDetails}
+            >
+              Close
+            </Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }

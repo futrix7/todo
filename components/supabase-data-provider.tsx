@@ -80,14 +80,14 @@ export function SupabaseDataProvider({
             </span>
             <DialogTitle>
               {missingSchema
-                ? "Task storage is unavailable"
+                ? "App data is unavailable"
                 : configurationMissing
                   ? "Connect your Supabase project"
                   : "Something happened"}
             </DialogTitle>
             <DialogDescription>
               {missingSchema
-                ? "Taskflow couldn’t find the required database tables. Run supabase/schema.sql and supabase/challenge-seed.sql in the Supabase SQL Editor, then try again."
+                ? "Taskflow couldn’t find the required database tables. Run supabase/schema.sql in the Supabase SQL Editor, then try again. For challenge features, also run supabase/challenge-seed.sql."
                 : configurationMissing
                   ? "Supabase is not configured yet. Add your project URL and anon key to the environment, then restart the app."
                   : "We’re sorry for the trouble. We’ll be back in a few minutes. Please try again later."}

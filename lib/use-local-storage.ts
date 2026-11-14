@@ -14,6 +14,10 @@ import { dateKey } from "./date-utils";
 const subscriptions = new Map<string, Set<() => void>>();
 const caches = new Map<string, { raw: string | null; value: unknown }>();
 
+export function clearLocalStorageStateCache(): void {
+  caches.clear();
+}
+
 function readRaw(key: string): string | null {
   if (typeof window === "undefined") return null;
   try {

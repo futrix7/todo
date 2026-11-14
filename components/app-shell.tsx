@@ -3,12 +3,10 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
 import { useTheme } from "next-themes";
 import {
   Check,
   Bell,
-  CheckSquare,
   ChevronRight,
   CalendarDays,
   BriefcaseBusiness,
@@ -117,13 +115,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
 import {
   isSupabaseConfigured,
@@ -133,15 +131,17 @@ import {
 } from "@/lib/supabase/task-data";
 import { loadUnreadNotificationCount } from "@/lib/supabase/social-data";
 import type { TaskGroup } from "@/lib/types";
-import { EASE } from "@/components/motion-fade";
 import { useMounted } from "@/lib/use-local-storage";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
+import { DailyCheckinReminder } from "@/components/daily-checkin-reminder";
 
 const NAV_ITEMS = [
   {
@@ -149,6 +149,12 @@ const NAV_ITEMS = [
     label: "Tasks",
     description: "Plan and organize your tasks",
     icon: ListChecks,
+  },
+  {
+    href: "/habits",
+    label: "Habits",
+    description: "Build and track recurring habits",
+    icon: Sprout,
   },
   {
     href: "/streak",
@@ -329,6 +335,7 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
   const { user } = useAuth();
   const { reportError, schemaUnavailable } = useSupabaseDataStatus();
   const [groups, setGroups] = React.useState<TaskGroup[]>([]);
+  const [groupsLoading, setGroupsLoading] = React.useState(true);
   const [activeGroup, setActiveGroup] = React.useState("all");
   const [width, setWidth] = React.useState(248);
   const [resizing, setResizing] = React.useState(false);
@@ -369,6 +376,11 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
     setNewGroupName("");
     setNewGroupIcon("file");
     setEditingGroup(null);
+  }
+
+  function openCreateGroup() {
+    resetGroupForm();
+    setCreateOpen(true);
   }
 
   async function createGroup(event: React.FormEvent<HTMLFormElement>) {
@@ -425,13 +437,19 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
   React.useEffect(() => {
     let active = true;
     function refreshGroups() {
-      if (!user?.id || !isSupabaseConfigured || schemaUnavailable) return;
+      if (!user?.id || !isSupabaseConfigured || schemaUnavailable) {
+        setGroupsLoading(false);
+        return;
+      }
 
       loadTaskGroups(user.id)
         .then((loadedGroups) => {
           if (active) setGroups(loadedGroups);
         })
-        .catch(reportError);
+        .catch(reportError)
+        .finally(() => {
+          if (active) setGroupsLoading(false);
+        });
     }
 
     refreshGroups();
@@ -443,6 +461,13 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
   }, [reportError, schemaUnavailable, user]);
 
   React.useEffect(() => {
+    function handleCreateRequest() {
+      setNewGroupName("");
+      setNewGroupIcon("file");
+      setEditingGroup(null);
+      setCreateOpen(true);
+    }
+
     function handleEditRequest(event: Event) {
       if (!(event instanceof CustomEvent)) return;
       const group = event.detail as TaskGroup | undefined;
@@ -457,9 +482,12 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
       setCreateOpen(true);
     }
 
+    window.addEventListener("task-group-create-requested", handleCreateRequest);
     window.addEventListener("task-group-edit-requested", handleEditRequest);
-    return () =>
+    return () => {
+      window.removeEventListener("task-group-create-requested", handleCreateRequest);
       window.removeEventListener("task-group-edit-requested", handleEditRequest);
+    };
   }, []);
 
   React.useEffect(() => {
@@ -490,17 +518,45 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
   return (
     <aside
       ref={sidebarRef}
-      className="relative w-full shrink-0 border-b bg-sidebar/40 px-3 py-2 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:max-h-dvh lg:w-[var(--task-groups-width)] lg:basis-[var(--task-groups-width)] lg:flex-col lg:overflow-y-auto lg:border-b-0 lg:border-r lg:bg-sidebar lg:px-3 lg:py-4"
+      className="relative w-full shrink-0 border-b bg-sidebar/40 px-2 pt-2 pb-0 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:max-h-dvh lg:w-[var(--task-groups-width)] lg:basis-[var(--task-groups-width)] lg:flex-col lg:overflow-hidden lg:border-b-0 lg:border-r lg:bg-sidebar lg:px-3 lg:py-4"
       style={{ "--task-groups-width": `${width}px` } as React.CSSProperties}
     >
-      <div className="mb-2 flex min-h-9 w-full shrink-0 items-center gap-2 px-2.5 text-sm font-semibold text-muted-foreground">
-        <CheckSquare className="size-3.5" />
-        <span>My tasks</span>
+      <div className="mb-2 flex min-h-9 w-full shrink-0 items-center gap-2 px-1.5 lg:px-2.5">
+        <Link
+          href="/tasks"
+          aria-label="Taskflow — tasks"
+          className="flex min-w-0 items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Check className="size-4" strokeWidth={3} />
+          </span>
+          <span className="truncate font-heading text-sm font-semibold">
+            Taskflow
+          </span>
+        </Link>
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          <Link
+            href="/notifications"
+            aria-label="Notifications"
+            className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Bell className="size-4" />
+          </Link>
+          <Link
+            href="/profile"
+            aria-label="Profile"
+            className="flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Avatar size="sm">
+              <AvatarFallback>{initials(user?.name ?? "U")}</AvatarFallback>
+            </Avatar>
+          </Link>
+        </div>
       </div>
       <nav
         id="task-group-links"
         aria-label="Task groups"
-        className="flex gap-1 overflow-x-auto lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-x-visible"
+        className="sidebar-scroll-region flex gap-1 overflow-x-auto lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-contain"
       >
           {links.map((link) => {
             const Icon = link.icon;
@@ -531,7 +587,7 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
                 }}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex min-h-10 shrink-0 items-center gap-2.5 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:w-full",
+                  "flex min-h-9 shrink-0 items-center gap-2.5 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:min-h-10 lg:w-full",
                   active
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -543,41 +599,56 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
               </Link>
             );
           })}
-        <Button
-          type="button"
-          variant="ghost"
-          aria-haspopup="dialog"
-          disabled={savingGroup}
-          onClick={() => {
-            resetGroupForm();
-            setCreateOpen(true);
-          }}
-          className="min-h-10 w-full shrink-0 justify-start gap-2.5 rounded-md px-3 text-sm font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        >
-          <Plus className="size-3.5" />
-          Create a group
-        </Button>
-        <Dialog
-          open={createOpen}
-          onOpenChange={(open) => {
-            if (!savingGroup) {
-              setCreateOpen(open);
-              if (!open) resetGroupForm();
-            }
-          }}
-        >
-          <DialogContent className="max-h-[min(90dvh,46rem)] sm:max-w-xl">
-            <DialogHeader>
-              <DialogTitle>
-                {editingGroup ? "Edit task group" : "Create a task group"}
-              </DialogTitle>
-              <DialogDescription>
-                {editingGroup
-                  ? "Update the name or icon used to organize this group."
-                  : "Give related tasks a home. Choose a name and an icon."}
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={createGroup} className="flex flex-col gap-4">
+          {groupsLoading &&
+            Array.from({ length: 3 }, (_, index) => (
+              <div
+                key={`group-skeleton-${index}`}
+                className="flex min-h-10 shrink-0 items-center gap-2.5 rounded-md px-3 lg:w-full"
+                aria-hidden="true"
+              >
+                <Skeleton className="size-4 shrink-0 rounded-sm" />
+                <Skeleton className="h-3.5 min-w-0 flex-1" />
+              </div>
+            ))}
+      </nav>
+      <Button
+        type="button"
+        variant="ghost"
+        aria-haspopup="dialog"
+        disabled={savingGroup}
+        onClick={openCreateGroup}
+        className="mt-2 hidden min-h-10 w-full shrink-0 justify-start gap-2.5 rounded-md px-3 text-sm font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground lg:flex"
+      >
+        <Plus className="size-3.5 shrink-0" />
+        Create a group
+      </Button>
+      <Drawer
+        open={createOpen}
+        onOpenChange={(open) => {
+          if (!savingGroup) {
+            setCreateOpen(open);
+            if (!open) resetGroupForm();
+          }
+        }}
+        swipeDirection="down"
+      >
+        <DrawerContent className="max-h-[min(90dvh,46rem)]">
+          <DrawerHeader>
+            <DrawerTitle>
+              {editingGroup ? "Edit task group" : "Create a task group"}
+            </DrawerTitle>
+            <DrawerDescription>
+              {editingGroup
+                ? "Update the name or icon used to organize this group."
+                : "Give related tasks a home. Choose a name and an icon."}
+            </DrawerDescription>
+          </DrawerHeader>
+          <form
+            onSubmit={createGroup}
+            autoComplete="off"
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="task-group-name">Group name</Label>
                 <Input
@@ -587,19 +658,13 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
                   placeholder="e.g. Personal projects"
                   aria-describedby={sidebarErrorId}
                   maxLength={60}
+                  autoComplete="off"
                   autoFocus
                   required
                 />
               </div>
               <fieldset className="flex min-h-0 flex-col gap-2">
                 <legend className="text-sm font-medium">Choose an icon</legend>
-                <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-                  {React.createElement(TASK_GROUP_ICONS[newGroupIcon], {
-                    className: "size-4 text-primary",
-                  })}
-                  <span className="capitalize">{newGroupIcon.replaceAll("_", " ")}</span>
-                  <span className="ml-auto text-xs">Select one</span>
-                </div>
                 <div
                   className="group-icon-scroll-region grid max-h-44 grid-cols-6 gap-1 overflow-y-auto overscroll-contain rounded-lg border p-2 sm:grid-cols-8"
                   role="radiogroup"
@@ -617,7 +682,6 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
                       aria-label={`${id.replaceAll("_", " ")} icon`}
                       role="radio"
                       aria-checked={newGroupIcon === id}
-                      title={id.replaceAll("_", " ")}
                       onClick={() =>
                         setNewGroupIcon(id as keyof typeof TASK_GROUP_ICONS)
                       }
@@ -630,30 +694,30 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
               <p id={sidebarErrorId} className="sr-only">
                 Group names must be unique and no longer than 60 characters.
               </p>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={savingGroup}
-                  onClick={() => setCreateOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={savingGroup}>
-                  {editingGroup ? <Pencil /> : <FolderPlus />}
-                  {savingGroup
-                    ? editingGroup
-                      ? "Saving…"
-                      : "Creating…"
-                    : editingGroup
-                      ? "Save changes"
-                      : "Create group"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </nav>
+            </div>
+            <DrawerFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={savingGroup}
+                onClick={() => setCreateOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingGroup}>
+                {editingGroup ? <Pencil /> : <FolderPlus />}
+                {savingGroup
+                  ? editingGroup
+                    ? "Saving…"
+                    : "Creating…"
+                  : editingGroup
+                    ? "Save changes"
+                    : "Create group"}
+              </Button>
+            </DrawerFooter>
+          </form>
+        </DrawerContent>
+      </Drawer>
       <div
         role="separator"
         aria-label="Resize task groups sidebar"
@@ -751,23 +815,28 @@ function DesktopSidebar({ pathname }: { pathname: string }) {
   }, [reportError, user?.id]);
 
   return (
-    <aside className="sticky top-0 flex h-dvh w-14 shrink-0 flex-col items-center border-r bg-sidebar py-3 text-sidebar-foreground lg:w-16">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Link
-              href="/tasks"
-              aria-label="Taskflow — tasks"
-              className="mb-5 flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          }
-        >
-          <Check className="size-5" strokeWidth={3} />
-        </TooltipTrigger>
-        <TooltipContent side="right">Taskflow</TooltipContent>
-      </Tooltip>
+    <aside className="sticky top-0 hidden h-dvh max-h-dvh w-14 shrink-0 flex-col items-center overflow-hidden border-r bg-sidebar py-3 text-sidebar-foreground md:flex lg:w-16">
+      <div className="flex shrink-0 flex-col items-center">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Link
+                href="/tasks"
+                aria-label="Taskflow — tasks"
+                className="mb-5 flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            }
+          >
+            <Check className="size-5 shrink-0" strokeWidth={3} />
+          </TooltipTrigger>
+          <TooltipContent side="right">Taskflow</TooltipContent>
+        </Tooltip>
+      </div>
 
-      <nav aria-label="Primary" className="flex flex-1 flex-col items-center gap-2">
+      <nav
+        aria-label="Primary"
+        className="sidebar-scroll-region flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto overscroll-contain py-1"
+      >
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = isActive(pathname, item.href);
@@ -780,7 +849,7 @@ function DesktopSidebar({ pathname }: { pathname: string }) {
                     aria-current={active ? "page" : undefined}
                     aria-label={item.label}
                     className={cn(
-                      "flex size-10 items-center justify-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "flex size-10 shrink-0 items-center justify-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       active
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -798,7 +867,7 @@ function DesktopSidebar({ pathname }: { pathname: string }) {
         })}
       </nav>
 
-      <div className="flex flex-col items-center gap-2 border-t pt-3">
+      <div className="flex shrink-0 flex-col items-center gap-2 border-t pt-3">
         <Tooltip>
           <TooltipTrigger
             render={
@@ -870,42 +939,44 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        "flex min-h-dvh bg-background",
-        isTasksPage && "lg:h-dvh lg:min-h-0 lg:overflow-hidden"
+        "flex bg-background",
+        !isTasksPage && "min-h-dvh",
+        isTasksPage && "h-dvh min-h-0 overflow-hidden",
+        isCalendarPage && "lg:h-dvh lg:min-h-0 lg:overflow-hidden"
       )}
     >
       <DesktopSidebar pathname={pathname} />
       <div
         className={cn(
           "flex min-w-0 flex-1 flex-col lg:flex-row",
-          isTasksPage && "lg:h-full lg:min-h-0"
+          isTasksPage && "h-full min-h-0",
+          isCalendarPage && "lg:h-full lg:min-h-0"
         )}
       >
         {isTasksPage && <TaskGroupSidebar pathname={pathname} />}
         <main
           className={cn(
-            "min-w-0 flex-1 px-3 py-4 sm:px-4 sm:py-6 md:px-6 md:py-8 lg:px-8 lg:py-6",
-            isTasksPage && "lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden lg:px-6 lg:py-5",
-            isCalendarPage && "p-0"
+            "min-w-0 flex-1 px-3 py-4 sm:px-4 sm:py-6 md:px-6 md:py-8 md:pb-8",
+            !isTasksPage && "pb-24 sm:pb-24 lg:px-8 lg:py-6",
+            isTasksPage &&
+              "flex min-h-0 flex-col overflow-hidden px-2 pt-0 pb-[calc(4rem_+_env(safe-area-inset-bottom))] sm:px-3 sm:pb-[calc(4rem_+_env(safe-area-inset-bottom))] md:px-5 md:pb-8 lg:px-6 lg:py-5",
+            isCalendarPage &&
+              "p-0 pb-24 md:pb-0 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden"
           )}
         >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={pathname}
-              className={cn(
-                "w-full min-w-0",
-                isTasksPage && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
-              )}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2, ease: EASE }}
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+          <div
+            className={cn(
+              "w-full min-w-0",
+              isTasksPage && "flex min-h-0 flex-1 flex-col",
+              isCalendarPage && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+            )}
+          >
+            {children}
+          </div>
         </main>
       </div>
+      <MobileBottomNav key={pathname} items={NAV_ITEMS} />
+      <DailyCheckinReminder />
     </div>
   );
 }

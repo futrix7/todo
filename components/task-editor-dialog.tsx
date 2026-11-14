@@ -6,13 +6,13 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -20,7 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { CATEGORIES, DURATIONS, REPEATS } from "@/lib/task-options";
-import { dateKey } from "@/lib/date-utils";
+import { dateKey, minutesBetweenTimes } from "@/lib/date-utils";
 import type { Priority, Repeat, Task, TaskGroup } from "@/lib/types";
 
 export interface TaskFormValues {
@@ -31,6 +31,7 @@ export interface TaskFormValues {
   category: string;
   dueDate: string;
   startTime: string;
+  endTime: string;
   duration: number;
   repeat: Repeat;
   reminder: boolean;
@@ -45,6 +46,7 @@ const EMPTY_FORM: TaskFormValues = {
   category: "Work",
   dueDate: "",
   startTime: "",
+  endTime: "",
   duration: 30,
   repeat: "none",
   reminder: false,
@@ -60,6 +62,7 @@ function formFromTask(task: Task): TaskFormValues {
     category: task.category,
     dueDate: task.dueDate ?? "",
     startTime: task.startTime ?? "",
+    endTime: task.endTime ?? "",
     duration: task.duration ?? 30,
     repeat: task.repeat,
     reminder: task.reminder,
@@ -71,6 +74,7 @@ export function taskFromForm(
   form: TaskFormValues,
   existing?: Task
 ): Task {
+  const scheduledMinutes = minutesBetweenTimes(form.startTime, form.endTime);
   return {
     id: existing?.id ?? `t${Date.now().toString(36)}`,
     title: form.title.trim(),
@@ -81,7 +85,8 @@ export function taskFromForm(
     category: form.category,
     dueDate: form.dueDate || undefined,
     startTime: form.startTime || undefined,
-    duration: form.duration,
+    endTime: form.endTime || undefined,
+    duration: scheduledMinutes ?? form.duration,
     repeat: form.repeat,
     reminder: form.reminder,
     streakEnabled: form.streakEnabled,
@@ -108,9 +113,8 @@ function TaskForm({
   onCancel: () => void;
 }) {
   const isEditing = Boolean(task);
-  const [tab, setTab] = React.useState<"simple" | "advanced">(
-    task ? "advanced" : "simple"
-  );
+  // Always start on the simple options so editing never jumps to Advanced.
+  const [tab, setTab] = React.useState<"simple" | "advanced">("simple");
   const [form, setForm] = React.useState<TaskFormValues>(() =>
     task
       ? formFromTask(task)
@@ -120,6 +124,7 @@ function TaskForm({
           dueDate: defaultDueDate ?? "",
         }
   );
+  const scheduledMinutes = minutesBetweenTimes(form.startTime, form.endTime);
 
   const set = <K extends keyof TaskFormValues>(
     key: K,
@@ -164,8 +169,10 @@ function TaskForm({
     <form
       onSubmit={submit}
       onKeyDown={advanceOnEnter}
-      className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5"
+      autoComplete="off"
+      className="flex min-h-0 flex-1 flex-col"
     >
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
       <Tabs value={tab} onValueChange={(value) => setTab(value as "simple" | "advanced")}>
         <TabsList variant="line" className="w-full">
           <TabsTrigger value="simple" className="flex-1">
@@ -183,6 +190,7 @@ function TaskForm({
               id="task-title"
               value={form.title}
               onChange={(event) => set("title", event.target.value)}
+              autoComplete="off"
               autoFocus
             />
           </div>
@@ -193,6 +201,7 @@ function TaskForm({
               rows={3}
               value={form.notes}
               onChange={(event) => set("notes", event.target.value)}
+              autoComplete="off"
             />
           </div>
         </TabsContent>
@@ -204,6 +213,7 @@ function TaskForm({
               id="task-title-adv"
               value={form.title}
               onChange={(event) => set("title", event.target.value)}
+              autoComplete="off"
             />
           </div>
 
@@ -230,27 +240,48 @@ function TaskForm({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label>Duration</Label>
-              <Select
-                value={form.duration}
-                onValueChange={(value) => set("duration", Number(value))}
-                items={DURATIONS.map((duration) => ({
-                  value: duration,
-                  label: `${duration} min`,
-                }))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DURATIONS.map((duration) => (
-                    <SelectItem key={duration} value={duration}>
-                      {duration} min
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="task-end-time">End time</Label>
+              <Input
+                id="task-end-time"
+                type="time"
+                value={form.endTime}
+                onChange={(event) => set("endTime", event.target.value)}
+              />
             </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Duration</Label>
+              {scheduledMinutes ? (
+                <Input
+                  readOnly
+                  value={`${scheduledMinutes} min`}
+                  aria-label="Duration from start and end time"
+                  className="bg-muted/40"
+                />
+              ) : (
+                <Select
+                  value={form.duration}
+                  onValueChange={(value) => set("duration", Number(value))}
+                  items={DURATIONS.map((duration) => ({
+                    value: duration,
+                    label: `${duration} min`,
+                  }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DURATIONS.map((duration) => (
+                      <SelectItem key={duration} value={duration}>
+                        {duration} min
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label>Repeat</Label>
               <Select
@@ -273,9 +304,6 @@ function TaskForm({
                 </SelectContent>
               </Select>
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="flex flex-col gap-1.5">
               <Label>Task group</Label>
               <Select
@@ -358,6 +386,7 @@ function TaskForm({
               rows={2}
               value={form.notes}
               onChange={(event) => set("notes", event.target.value)}
+              autoComplete="off"
             />
           </div>
 
@@ -382,15 +411,16 @@ function TaskForm({
           </div>
         </TabsContent>
       </Tabs>
+      </div>
 
-      <DialogFooter>
+      <DrawerFooter>
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
         <Button type="submit">
           <Plus /> {isEditing ? "Save changes" : "Add task"}
         </Button>
-      </DialogFooter>
+      </DrawerFooter>
     </form>
   );
 }
@@ -417,7 +447,7 @@ export function TaskEditorDialog({
   const displayedTask = open ? task : closingTask;
 
   return (
-    <Dialog
+    <Drawer
       open={open}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) setClosingTask(task);
@@ -429,14 +459,17 @@ export function TaskEditorDialog({
           setFormResetKey((current) => current + 1);
         }
       }}
+      swipeDirection="down"
     >
-      <DialogContent className="max-h-[calc(100dvh-2rem)] sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{displayedTask ? "Edit task" : "New task"}</DialogTitle>
-          <DialogDescription className="sr-only">
-            {displayedTask ? "Edit task details." : "Create a task."}
-          </DialogDescription>
-        </DialogHeader>
+      <DrawerContent className="max-h-[calc(100dvh-0.5rem)]">
+        <DrawerHeader>
+          <DrawerTitle>{displayedTask ? "Edit task" : "New task"}</DrawerTitle>
+          <DrawerDescription>
+            {displayedTask
+              ? "Update the details for this task."
+              : "Add a task to your daily plan."}
+          </DrawerDescription>
+        </DrawerHeader>
         <TaskForm
           key={`${displayedTask?.id ?? "new"}-${defaultGroupId ?? "none"}-${defaultDueDate ?? "undated"}-${formResetKey}`}
           task={displayedTask}
@@ -449,7 +482,7 @@ export function TaskEditorDialog({
           }}
           onCancel={() => onOpenChange(false)}
         />
-      </DialogContent>
-    </Dialog>
+      </DrawerContent>
+    </Drawer>
   );
 }

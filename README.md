@@ -28,17 +28,28 @@ order:
 
 1. [`supabase/schema.sql`](./supabase/schema.sql) creates or updates all app
    tables, row-level security policies, indexes, triggers, RPC functions, and
-   authenticated-user permissions. It is safe to re-run and does not drop user
-   data.
+   authenticated-user permissions, including separate `habits` and `habit_logs`
+   tables. Re-run it to add support for habit emojis and start/end dates. It is
+   safe to re-run and does not drop user data.
 2. [`supabase/challenge-seed.sql`](./supabase/challenge-seed.sql) populates the
    challenge catalog and repairs generated tasks for users who already joined
    a challenge. It can be re-run safely.
 
+For sample app data, run [`supabase/demo-seed.sql`](./supabase/demo-seed.sql) in
+the SQL Editor. It requires the confirmed `hdmani97@gmail.com` account to
+already exist in Supabase Auth. It seeds tasks and history, groups, mood
+check-ins, every habit type, and challenge progress for that account. It does
+not create or change Auth users, profile details, or friendships. The seed can
+be rerun; it updates records with matching `demo-*` sample IDs. It does not
+create fake user reports.
+
 The schema script supports both a fresh Supabase project and projects that
 already have the app tables. Existing timestamped SQL migrations have been
-consolidated into these two scripts; do not run the old migrations as well.
-Refresh the app after both scripts succeed. Re-run the schema script after
-updating the app to enable the one-time permanent username feature.
+consolidated into the schema and challenge-catalog scripts; do not run the old
+migrations as well. Refresh the app after the scripts succeed. Re-run the schema
+script after updating the app to enable the one-time permanent username feature,
+public custom challenges, and the challenge-status visibility preference.
+Existing profiles default to visible participation status.
 
 Daily streaks continue when you save a check-in, add a task, or complete a
 task. Task-specific streaks still count completions for that task only.
