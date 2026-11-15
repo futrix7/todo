@@ -1,0 +1,23 @@
+Generated app details
+
+Project: todo-web
+Framework: Next.js App Router
+Primary app area: /app/(app)
+Main pages included in the app structure:
+- /tasks
+- /calendar
+- /days
+- /habits
+- /notifications
+- /streak
+- /friends
+- /profile
+- /profile/analytics
+- /profile/settings
+
+Recent UI adjustments applied:
+- Analytics: Habit consistency graph is now placed alongside the completion-by-category chart instead of being left below the chart stack.
+- Streak page: card hierarchy and spacing were refined to better match the app theme and improve readability.
+- Days page: mood buttons, notes area, rating controls, and summary cards were enlarged for a less cramped layout.
+
+This file was generated for personal reference only and is not connected to the app.

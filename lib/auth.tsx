@@ -15,13 +15,23 @@ interface AuthContextValue {
     email: string,
     password: string
   ) => Promise<{ verificationRequired: boolean }>;
-  verifySignupOtp: (email: string, token: string) => Promise<void>;
-  resendSignupOtp: (email: string) => Promise<void>;
+  resendSignupEmail: (email: string) => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateProfile: (patch: Partial<AuthUser>) => Promise<void>;
 }
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
+
+function confirmationRedirectUrl(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return `${window.location.origin}/auth/confirm`;
+}
+
+function passwordResetRedirectUrl(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  return `${window.location.origin}/auth/confirm?next=%2Freset-password`;
+}
 
 function mapSupabaseUser(user: SupabaseUser): AuthUser {
   return {
@@ -114,7 +124,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { name: name.trim() } },
+        options: {
+          data: { name: name.trim() },
+          emailRedirectTo: confirmationRedirectUrl(),
+        },
       });
       if (error) throw error;
       if (!data.user) throw new Error("Supabase did not create an account.");
@@ -129,30 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const verifySignupOtp = React.useCallback(
-    async (email: string, token: string) => {
-      const supabase = getSupabase();
-      if (!supabase) {
-        throw new Error(
-          "Supabase is not configured. Add its URL and anon key to .env.local."
-        );
-      }
-
-      const { data, error } = await supabase.auth.verifyOtp({
-        email,
-        token,
-        type: "signup",
-      });
-      if (error) throw error;
-      if (!data.user) throw new Error("Supabase did not verify your email.");
-      setUser(mapSupabaseUser(data.user));
-      setAuthError(null);
-      setAuthReady(true);
-    },
-    []
-  );
-
-  const resendSignupOtp = React.useCallback(async (email: string) => {
+  const resendSignupEmail = React.useCallback(async (email: string) => {
     const supabase = getSupabase();
     if (!supabase) {
       throw new Error(
@@ -160,7 +150,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       );
     }
 
-    const { error } = await supabase.auth.resend({ type: "signup", email });
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: confirmationRedirectUrl() },
+    });
+    if (error) throw error;
+  }, []);
+
+  const sendPasswordReset = React.useCallback(async (email: string) => {
+    const supabase = getSupabase();
+    if (!supabase) {
+      throw new Error(
+        "Supabase is not configured. Add its URL and anon key to .env.local."
+      );
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: passwordResetRedirectUrl(),
+    });
     if (error) throw error;
   }, []);
 
@@ -201,8 +209,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authError,
       signIn,
       signUp,
-      verifySignupOtp,
-      resendSignupOtp,
+      resendSignupEmail,
+      sendPasswordReset,
       signOut,
       updateProfile,
     }),
@@ -212,8 +220,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authError,
       signIn,
       signUp,
-      verifySignupOtp,
-      resendSignupOtp,
+      resendSignupEmail,
+      sendPasswordReset,
       signOut,
       updateProfile,
     ]

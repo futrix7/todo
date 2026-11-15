@@ -148,6 +148,28 @@
   }
 }
 
+/* sonner toast */
+.cn-toast {
+  @apply rounded-[calc(var(--radius)+4px)] bg-popover text-popover-foreground border border-border shadow-sm;
+  @apply transition-all duration-200 ease-out;
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50;
+}
+.cn-toast[data-state="open"] {
+  @apply animate-in fade-in-0 zoom-in-99 ease-out duration-300;
+}
+.cn-toast[data-state="closed"] {
+  @apply animate-out fade-out-0 zoom-out-95 ease-in duration-200;
+}
+.cn-description {
+  @apply flex-1 pr-3 text-sm;
+}
+.cn-action {
+  @apply mr-2 inline-flex items-center justify-center;
+}
+.cn-reverse-action {
+  @apply ml-2 inline-flex items-center justify-center;
+}
+
 /* Keep browser autofill suggestions and fills matched to the app theme. */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
@@ -231,4 +253,29 @@ select:-webkit-autofill {
 
 .sidebar-scroll-region:hover {
   scrollbar-color: color-mix(in oklch, var(--muted-foreground) 55%, transparent) transparent;
+}
+
+.app-scroll-region {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 30%, transparent) transparent;
+}
+
+.app-scroll-region::-webkit-scrollbar {
+  display: block;
+  width: 8px;
+}
+
+.app-scroll-region::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--background) 10%, transparent);
+}
+
+.app-scroll-region::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background-color: color-mix(in oklch, var(--muted-foreground) 40%, var(--primary));
+  border: 2px solid transparent;
+}
+
+.app-scroll-region:hover::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklch, var(--muted-foreground) 50%, var(--primary));
 }

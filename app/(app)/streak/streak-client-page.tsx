@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import {
   CalendarCheck,
   CheckCircle2,
@@ -44,7 +43,6 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
-import { FadeIn, EASE } from "@/components/motion-fade";
 
 const trendConfig = {
   completed: { label: "Completed", color: "var(--chart-1)" },
@@ -88,62 +86,69 @@ function StreakCalendar({
 }) {
   const month = getMonthCalendar(today);
   const activeDaySet = new Set(activeDays);
+  const activeDaysThisMonth = activeDays.filter(
+    (date) => date.slice(0, 7) === today.slice(0, 7)
+  ).length;
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-3">
-          <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
-            <CalendarCheck className="size-4 text-primary" /> Streak calendar
-          </CardTitle>
-          {month && (
-            <span className="text-xs font-medium text-muted-foreground sm:text-sm">
-              {month.label}
-            </span>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="min-w-0">
-        <div className="grid grid-cols-7 gap-1 text-center sm:gap-1.5">
-          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((weekday) => (
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-base font-semibold sm:text-lg">{month?.label ?? "This month"}</p>
+        <span className="rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-xs font-semibold text-primary sm:text-sm">
+          {activeDaysThisMonth} active {activeDaysThisMonth === 1 ? "day" : "days"}
+        </span>
+      </div>
+      <div className="grid grid-cols-7 gap-1.5 text-center sm:gap-2">
+        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((weekday) => (
+          <span
+            key={weekday}
+            className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm"
+            aria-hidden="true"
+          >
+            {weekday}
+          </span>
+        ))}
+      </div>
+      <div
+        aria-label={`${month?.label ?? "Current month"} streak activity`}
+        className="grid min-h-0 flex-1 auto-rows-fr grid-cols-7 gap-1.5 sm:gap-2"
+      >
+        {month?.days.map((cell, index) => {
+          if (!cell) {
+            return <span key={`empty-${index}`} aria-hidden="true" />;
+          }
+          const isStreakDay = activeDaySet.has(cell.date);
+          const isToday = cell.date === today;
+          return (
             <span
-              key={weekday}
-              className="pb-1 text-[10px] font-medium text-muted-foreground sm:text-xs"
-              aria-hidden="true"
+              key={cell.date}
+              title={`${shortLabel(cell.date)}${isStreakDay ? " · Streak day" : ""}`}
+              aria-label={`${shortLabel(cell.date)}${isStreakDay ? ", streak day" : ""}${isToday ? ", today" : ""}`}
+              aria-current={isToday ? "date" : undefined}
+              className={cn(
+                "flex h-full min-h-8 w-full items-center justify-center rounded-xl border text-base font-semibold leading-none tabular-nums transition-colors sm:text-lg",
+                isStreakDay
+                  ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+                  : "border-border/60 bg-muted/20 text-muted-foreground",
+                isToday && "relative z-10 ring-2 ring-primary ring-offset-2 ring-offset-card"
+              )}
             >
-              {weekday}
+              {cell.day}
             </span>
-          ))}
-          {month?.days.map((cell, index) => {
-            if (!cell) {
-              return <span key={`empty-${index}`} />;
-            }
-            const isStreakDay = activeDaySet.has(cell.date);
-            const isToday = cell.date === today;
-            return (
-              <span
-                key={cell.date}
-                title={`${shortLabel(cell.date)}${isStreakDay ? " · Streak day" : ""}`}
-                aria-label={`${shortLabel(cell.date)}${isStreakDay ? ", streak day" : ""}${isToday ? ", today" : ""}`}
-                className={cn(
-                  "mx-auto flex aspect-square w-full max-w-9 items-center justify-center rounded-md border text-xs tabular-nums",
-                  isStreakDay
-                    ? "border-primary bg-primary font-semibold text-primary-foreground"
-                    : "border-border bg-muted/30 text-muted-foreground",
-                  isToday && "ring-2 ring-primary ring-offset-2 ring-offset-card"
-                )}
-              >
-                {cell.day}
-              </span>
-            );
-          })}
-        </div>
-        <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border/70 pt-3 text-sm text-muted-foreground">
+        <span className="inline-flex items-center gap-2">
           <span className="size-3 rounded bg-primary" aria-hidden="true" />
-          <span>Streak day</span>
-        </div>
-      </CardContent>
-    </Card>
+          Streak day
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="size-3 rounded-md border-2 border-primary" aria-hidden="true" />
+          Today
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -230,8 +235,8 @@ export default function StreakPage() {
   if (weekStart) weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
   const weekDays = weekStart
     ? activityStreaks.activeDays.filter(
-        (day) => day >= dateKey(weekStart) && day <= today
-      ).length
+      (day) => day >= dateKey(weekStart) && day <= today
+    ).length
     : 0;
   const trackedTasks = allTasks.filter((task) => task.streakEnabled);
   const activeStreaks = trackedTasks.length;
@@ -270,198 +275,183 @@ export default function StreakPage() {
           variant="outline"
           size="sm"
         >
-          <TrendingUp />
-          Analytics
+          <TrendingUp /> Analytics
         </Button>
       </header>
 
-      <div className="grid min-w-0 gap-4 lg:grid-cols-3 lg:gap-5">
-        <FadeIn className="min-w-0">
-          <Link
-            href="/days"
-            className="group block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          >
-            <Card className="h-full border-primary/20 bg-primary/[0.03] transition-colors hover:bg-primary/[0.06]">
-              <CardContent className="flex items-center gap-3">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <Flame className="size-5" aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1 text-sm font-medium">
-                  Daily streak
-                </span>
-                <span className="font-heading text-xl font-semibold tabular-nums">
-                  {currentStreak}
-                  <span className="ml-1 text-xs font-medium text-muted-foreground">
-                    {currentStreak === 1 ? "day" : "days"}
-                  </span>
-                </span>
-                <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-              </CardContent>
-            </Card>
-          </Link>
-        </FadeIn>
-
-        <FadeIn delay={0.04} className="min-w-0 lg:col-span-2">
-          <div className="grid h-full grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-            {[
-              { label: "Tracked tasks", value: activeStreaks },
-              { label: "Best streak", value: `${longestStreak}d` },
-              { label: "This week", value: `${weekDays}/7` },
-              { label: "Completions", value: activity.length.toLocaleString() },
-            ].map((stat) => (
-              <Card key={stat.label} className="h-full">
-                <CardContent className="flex h-full min-w-0 flex-col items-center justify-center gap-1 px-2 py-3 text-center sm:px-3 sm:py-4">
-                  <p className="truncate text-xs text-muted-foreground">
-                    {stat.label}
-                  </p>
-                  <p className="max-w-full truncate font-heading text-lg font-semibold tabular-nums sm:text-xl">
-                    {stat.value}
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </FadeIn>
-      </div>
-
-      <FadeIn delay={0.06}>
-        <Card className="border-primary/20 bg-primary/[0.03]">
-          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              {activeToday ? (
-                <CheckCircle2 className="size-5" />
-              ) : (
-                <Flame className="size-5" />
-              )}
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[1.05fr_1.95fr] lg:gap-5">
+        <Card className="h-full border-border/70 bg-card/80 shadow-sm transition-colors hover:bg-card">
+          <CardContent className="flex items-center gap-4 p-5 sm:p-6">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20 sm:size-14">
+              <Flame className="size-6" aria-hidden="true" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold">
-                {checkedInToday
-                  ? "Today's check-in is saved"
-                  : activeToday
-                    ? "Your streak is already safe today"
-                    : "Keep your streak moving"}
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {checkedInToday
-                  ? "Your check-in counts toward your daily streak."
-                  : activeToday
-                    ? "Adding a task or completing one counts too. A mood check-in is always optional."
-                    : "Check in, add a task, or complete one today to continue your daily streak."}
+              <p className="text-sm font-medium uppercase tracking-[0.14em] text-muted-foreground">Daily streak</p>
+              <p className="mt-1 font-heading text-3xl font-semibold tabular-nums sm:text-4xl">
+                {currentStreak}
+                <span className="ml-1.5 text-sm font-medium text-muted-foreground">
+                  {currentStreak === 1 ? "day" : "days"}
+                </span>
               </p>
             </div>
-            <div className="flex shrink-0 gap-2">
-              <Button
-                nativeButton={false}
-                render={<Link href="/days" />}
-                variant="outline"
-                size="sm"
-              >
-                {checkedInToday ? "View check-in" : "Check in"}
-              </Button>
-              <Button
-                nativeButton={false}
-                render={<Link href="/tasks" />}
-                size="sm"
-              >
-                Add a task
-              </Button>
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+          </CardContent>
+        </Card>
+
+        <div className="grid h-full grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
+          {[
+            { label: "Tracked tasks", value: activeStreaks },
+            { label: "Best streak", value: `${longestStreak}d` },
+            { label: "This week", value: `${weekDays}/7` },
+            { label: "Completions", value: activity.length.toLocaleString() },
+          ].map((stat) => (
+            <Card key={stat.label} className="h-full border-border/70 bg-card/80 shadow-sm">
+              <CardContent className="w-full h-full flex items-center content-center justify-center flex-col">
+
+                <p className="max-w-full font-heading text-2xl font-semibold leading-none tabular-nums sm:text-5xl">
+                  {stat.value}
+                </p>
+                <p className="text-muted-foreground">
+                  {stat.label}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      <Card className="border-border/70 bg-card/80 shadow-sm">
+        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:p-5">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20">
+            {activeToday ? (
+              <CheckCircle2 className="size-5" />
+            ) : (
+              <Flame className="size-5" />
+            )}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-lg sm:text-2xl font-semibold">
+              {checkedInToday
+                ? "Today's check-in is saved"
+                : activeToday
+                  ? "Your streak is already safe today"
+                  : "Keep your streak moving"}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {checkedInToday
+                ? "Your check-in counts toward your daily streak."
+                : activeToday
+                  ? "Adding a task or completing one counts too. A mood check-in is always optional."
+                  : "Check in, add a task, or complete one today to continue your daily streak."}
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              nativeButton={false}
+              render={<Link href="/days" />}
+              variant="outline"
+              size="lg"
+            >
+              {checkedInToday ? "View check-in" : "Check in"}
+            </Button>
+            <Button
+              nativeButton={false}
+              render={<Link href="/tasks" />}
+              size="lg"
+            >
+              Add a task
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+      <div className="grid min-w-0 items-stretch gap-4 xl:grid-cols-[1.2fr_1.8fr] xl:gap-5">
+        <Card className="flex h-full flex-col overflow-hidden border-border/70 bg-card/80 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Flame className="size-4 text-primary" /> Task streaks
+            </CardTitle>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {trackedTasks.length
+                ? `${trackedTasks.length} ${trackedTasks.length === 1 ? "task" : "tasks"} building a streak`
+                : "Track a streak on any task to see it here"}
+            </p>
+          </CardHeader>
+          <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+            <div aria-label="Streaks by task" className="app-scroll-region min-h-0 flex-1 divide-y divide-border/70" role="list">
+              {trackedTasks.length ? (
+                trackedTasks.map((task) => {
+                  const taskActivity = activity.filter(
+                    (completion) => completion.taskId === task.id
+                  );
+                  const taskStreak = getActivityStreaks(taskActivity, today);
+                  return (
+                    <div
+                      key={task.id}
+                      role="listitem"
+                      className="flex min-w-0 items-center gap-3 px-3 py-3 sm:px-4"
+                    >
+                      <p className="min-w-0 flex-1 truncate text-sm font-medium">
+                        {task.title}
+                      </p>
+                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-[11px] tabular-nums sm:gap-2 sm:text-xs">
+                        <span className="rounded-md bg-primary/10 px-2 py-1 font-medium text-primary ring-1 ring-primary/20">
+                          {taskStreak.current}d current
+                        </span>
+                        <span className="rounded-md bg-muted px-2 py-1 text-muted-foreground ring-1 ring-border/70">
+                          {Math.max(task.longestStreak, taskStreak.longest)}d
+                          best
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="flex flex-col items-center gap-2 p-8 text-center">
+                  <p className="text-sm font-medium">No active task streaks</p>
+                  <Link
+                    href="/tasks"
+                    className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                  >
+                    Set up a task streak
+                  </Link>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
-      </FadeIn>
 
-      <div className="grid min-w-0 items-start gap-4 lg:grid-cols-3 lg:gap-5">
-        <FadeIn delay={0.08} className="min-w-0 lg:col-span-2">
-          <StreakCalendar today={today} activeDays={activityStreaks.activeDays} />
-        </FadeIn>
-
-        <FadeIn delay={0.1} className="min-w-0">
-          <Card className="flex flex-col">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Flame className="size-4 text-primary" /> Task streaks
-              </CardTitle>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {trackedTasks.length
-                  ? `${trackedTasks.length} ${trackedTasks.length === 1 ? "task" : "tasks"} building a streak`
-                  : "Track a streak on any task to see it here"}
-              </p>
-            </CardHeader>
-            <CardContent className="min-h-0 flex-1 p-0">
-              <div aria-label="Streaks by task" className="divide-y" role="list">
-                {trackedTasks.length ? (
-                  trackedTasks.map((task, index) => {
-                    const taskActivity = activity.filter(
-                      (completion) => completion.taskId === task.id
-                    );
-                    const taskStreak = getActivityStreaks(taskActivity, today);
-                    return (
-                      <motion.div
-                        key={task.id}
-                        role="listitem"
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{
-                          duration: 0.3,
-                          delay: index * 0.04,
-                          ease: EASE,
-                        }}
-                        className="flex min-w-0 items-center gap-3 px-3 py-3 sm:px-4"
-                      >
-                        <p className="min-w-0 flex-1 truncate text-sm font-medium">
-                          {task.title}
-                        </p>
-                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 text-[11px] tabular-nums sm:gap-2 sm:text-xs">
-                          <span className="rounded-md bg-primary/10 px-2 py-1 font-medium text-primary">
-                            {taskStreak.current}d current
-                          </span>
-                          <span className="rounded-md bg-muted px-2 py-1 text-muted-foreground">
-                            {Math.max(task.longestStreak, taskStreak.longest)}d
-                            best
-                          </span>
-                        </div>
-                      </motion.div>
-                    );
-                  })
-                ) : (
-                  <div className="flex flex-col items-center gap-2 p-8 text-center">
-                    <p className="text-sm font-medium">No active task streaks</p>
-                    <Link
-                      href="/tasks"
-                      className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-                    >
-                      Set up a task streak
-                    </Link>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </FadeIn>
-      </div>
-
-      <FadeIn delay={0.12}>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="size-4 text-primary" /> Streak trend
+        <Card className="flex h-full flex-col border-border/70 bg-card/80 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <CalendarCheck className="size-4 text-primary" /> Streak calendar
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-[var(--chart-1)]" />
-                Completed
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-3 border-t-2 border-dashed border-[var(--chart-3)]" />
-                Created
-              </span>
-            </div>
-            {activity.length || allTasks.length ? (
-              <ChartContainer config={trendConfig} className="h-[210px] w-full sm:h-[260px]">
-                <LineChart data={completionSeries} margin={{ left: 4, right: 8, top: 8 }}>
+          <CardContent className="flex min-h-[25rem] min-w-0 flex-1 flex-col p-4 sm:min-h-[28rem] sm:p-5">
+            <StreakCalendar today={today} activeDays={activityStreaks.activeDays} />
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-border/70 bg-card/80 shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="size-4 text-primary" /> Streak trend
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="size-2 rounded-full bg-[var(--chart-1)]" />
+              Completed
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 border-t-2 border-dashed border-[var(--chart-3)]" />
+              Created
+            </span>
+          </div>
+          {activity.length || allTasks.length ? (
+            <ChartContainer config={trendConfig} className="h-[210px] w-full sm:h-[260px]">
+              <LineChart data={completionSeries} margin={{ left: 4, right: 8, top: 8 }}>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
                 <XAxis
                   dataKey="day"
@@ -495,16 +485,15 @@ export default function StreakPage() {
                   dot={{ r: 3, fill: "var(--chart-1)" }}
                   activeDot={{ r: 5 }}
                 />
-                </LineChart>
-              </ChartContainer>
-            ) : (
-              <div className="flex h-[210px] items-center justify-center text-sm text-muted-foreground sm:h-[260px]">
-                Complete tasks to build your streak trend.
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </FadeIn>
+              </LineChart>
+            </ChartContainer>
+          ) : (
+            <div className="flex h-[210px] items-center justify-center text-sm text-muted-foreground sm:h-[260px]">
+              Complete tasks to build your streak trend.
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

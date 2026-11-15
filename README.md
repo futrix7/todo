@@ -54,6 +54,22 @@ Existing profiles default to visible participation status.
 Daily streaks continue when you save a check-in, add a task, or complete a
 task. Task-specific streaks still count completions for that task only.
 
+## Auth emails
+
+Both the sign-up confirmation and the password reset link are sent by
+Supabase's own mailer, and both land on
+[`app/auth/confirm/route.ts`](./app/auth/confirm/route.ts), which verifies the
+token and then continues to the app or to `/reset-password`.
+
+1. In the Supabase dashboard, add `<your-site>/auth/confirm` to
+   **Authentication → URL Configuration → Redirect URLs**, and keep
+   **Confirm email** enabled under **Authentication → Providers → Email**.
+2. Custom SMTP is recommended for production so the emails arrive from your own
+   domain; without it Supabase's built-in service is rate-limited and only
+   delivers to members of your project team.
+3. No extra environment variables are needed — the app uses
+   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

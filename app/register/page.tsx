@@ -3,46 +3,25 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MailCheck, UserPlus } from "lucide-react";
+import { MailCheck, Send, UserPlus } from "lucide-react";
 
 import { isSupabaseConfigured, useAuth } from "@/lib/auth";
 import { AuthLayout } from "@/components/auth-layout";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-} from "@/components/ui/input-otp";
 
 export default function RegisterPage() {
-  const { signUp, verifySignupOtp, resendSignupOtp, authError } = useAuth();
+  const { signUp, resendSignupEmail, authError } = useAuth();
   const router = useRouter();
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
-  const [verificationEmail, setVerificationEmail] = React.useState<string | null>(
-    null
-  );
-  const [verificationOtp, setVerificationOtp] = React.useState("");
-  const [verificationError, setVerificationError] = React.useState<string | null>(
-    null
-  );
-  const [verificationStatus, setVerificationStatus] = React.useState<
-    string | null
-  >(null);
-  const [verifyingOtp, setVerifyingOtp] = React.useState(false);
-  const [resendingOtp, setResendingOtp] = React.useState(false);
+  const [pendingEmail, setPendingEmail] = React.useState<string | null>(null);
+  const [resending, setResending] = React.useState(false);
   const [resendCooldown, setResendCooldown] = React.useState(0);
+  const [resendStatus, setResendStatus] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -70,10 +49,8 @@ export default function RegisterPage() {
     try {
       const result = await signUp(name, email.trim(), password);
       if (result.verificationRequired) {
-        setVerificationEmail(email.trim());
-        setVerificationOtp("");
-        setVerificationError(null);
-        setVerificationStatus(null);
+        setPendingEmail(email.trim());
+        setResendStatus(null);
         setResendCooldown(60);
       } else {
         router.replace("/tasks");
@@ -87,54 +64,33 @@ export default function RegisterPage() {
     }
   }
 
-  async function handleVerifyOtp(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!verificationEmail) return;
-    if (verificationOtp.length !== 6) {
-      setVerificationError("Enter the 6-digit code from your email.");
-      return;
-    }
-
-    setVerifyingOtp(true);
-    setVerificationError(null);
+  async function handleResend() {
+    if (!pendingEmail) return;
+    setResending(true);
+    setFormError(null);
+    setResendStatus(null);
     try {
-      await verifySignupOtp(verificationEmail, verificationOtp);
-      router.replace("/tasks");
-    } catch (error) {
-      setVerificationError(
-        error instanceof Error ? error.message : "Unable to verify your email."
-      );
-    } finally {
-      setVerifyingOtp(false);
-    }
-  }
-
-  async function handleResendOtp() {
-    if (!verificationEmail) return;
-    setResendingOtp(true);
-    setVerificationError(null);
-    setVerificationStatus(null);
-    try {
-      await resendSignupOtp(verificationEmail);
-      setVerificationOtp("");
+      await resendSignupEmail(pendingEmail);
       setResendCooldown(60);
-      setVerificationStatus("A new code has been sent.");
+      setResendStatus("Confirmation email sent again.");
     } catch (error) {
-      setVerificationError(
-        error instanceof Error ? error.message : "Unable to resend the code."
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "Unable to resend the confirmation email."
       );
     } finally {
-      setResendingOtp(false);
+      setResending(false);
     }
   }
 
   return (
     <AuthLayout
-      title={verificationEmail ? "Verify your email" : "Create your account"}
+      title={pendingEmail ? "Confirm your email" : "Create your account"}
       footer={
-        verificationEmail ? (
+        pendingEmail ? (
           <span>
-            Already verified?{" "}
+            Already confirmed?{" "}
             <Link
               href="/login"
               className="font-medium text-primary underline-offset-4 hover:underline"
@@ -155,97 +111,74 @@ export default function RegisterPage() {
         )
       }
     >
-      {verificationEmail ? (
-        <Dialog
-          open
-          disablePointerDismissal
-          onOpenChange={(open) => {
-            if (!open) {
-              setVerificationEmail(null);
-              setVerificationOtp("");
-              setVerificationError(null);
-              setVerificationStatus(null);
-            }
-          }}
-        >
-          <DialogContent showCloseButton={false}>
-            <DialogHeader className="items-center text-center">
-              <span className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <MailCheck className="size-7" />
-              </span>
-              <DialogTitle className="text-xl leading-tight">
-                Verify your email
-              </DialogTitle>
-              <DialogDescription>
-                Enter the 6-digit code sent to {verificationEmail}.
-              </DialogDescription>
-            </DialogHeader>
-            <form
-              onSubmit={handleVerifyOtp}
-              className="flex flex-col items-center gap-4"
+      {pendingEmail ? (
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <span className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <MailCheck className="size-7" />
+            </span>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              We sent a confirmation link to{" "}
+              <strong className="font-medium text-foreground">
+                {pendingEmail}
+              </strong>
+              . Open it to activate your account and sign in automatically.
+            </p>
+          </div>
+
+          {formError && (
+            <p
+              className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+              role="alert"
             >
-              {verificationError && (
-                <p className="w-full text-sm text-destructive" role="alert">
-                  {verificationError}
-                </p>
-              )}
-              {verificationStatus && (
-                <p className="w-full text-sm text-muted-foreground" role="status">
-                  {verificationStatus}
-                </p>
-              )}
-              <div className="flex flex-col items-center gap-2">
-                <Label htmlFor="verification-code">Verification code</Label>
-                <InputOTP
-                  id="verification-code"
-                  aria-label="6-digit verification code"
-                  maxLength={6}
-                  value={verificationOtp}
-                  onChange={setVerificationOtp}
-                >
-                  <InputOTPGroup>
-                    {Array.from({ length: 6 }, (_, index) => (
-                      <InputOTPSlot key={index} index={index} />
-                    ))}
-                  </InputOTPGroup>
-                </InputOTP>
-              </div>
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={verifyingOtp || verificationOtp.length !== 6}
-              >
-                {verifyingOtp ? "Verifying…" : "Verify email"}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full"
-                disabled={resendingOtp || resendCooldown > 0}
-                onClick={handleResendOtp}
-              >
-                {resendingOtp
-                  ? "Sending new code…"
-                  : resendCooldown > 0
-                    ? `Resend code in ${resendCooldown}s`
-                    : "Resend code"}
-              </Button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPassword("");
-                  setFormError(null);
-                  setVerificationEmail(null);
-                  setVerificationOtp("");
-                  setVerificationError(null);
-                }}
-                className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-              >
-                Entered the wrong details? Go back and change them
-              </button>
-            </form>
-          </DialogContent>
-        </Dialog>
+              {formError}
+            </p>
+          )}
+          {resendStatus && (
+            <p
+              className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground"
+              role="status"
+            >
+              {resendStatus}
+            </p>
+          )}
+
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              disabled={resending || resendCooldown > 0}
+              onClick={handleResend}
+            >
+              <Send />
+              {resending
+                ? "Sending…"
+                : resendCooldown > 0
+                  ? `Resend email in ${resendCooldown}s`
+                  : "Resend confirmation email"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={resending}
+              onClick={() => {
+                setPendingEmail(null);
+                setPassword("");
+                setFormError(null);
+                setResendStatus(null);
+                setResendCooldown(0);
+              }}
+            >
+              Use a different email address
+            </Button>
+          </div>
+
+          <p className="text-center text-xs leading-relaxed text-muted-foreground">
+            The link expires in 24 hours. If it doesn&apos;t arrive, check your
+            spam folder.
+          </p>
+        </div>
       ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {!isSupabaseConfigured && (
@@ -318,6 +251,10 @@ export default function RegisterPage() {
             <UserPlus />
             {loading ? "Creating account…" : "Create account"}
           </Button>
+
+          <p className="text-center text-xs leading-relaxed text-muted-foreground">
+            We&apos;ll email you a confirmation link before you can sign in.
+          </p>
         </form>
       )}
     </AuthLayout>

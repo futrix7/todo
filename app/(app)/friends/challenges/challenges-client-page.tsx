@@ -23,14 +23,8 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+import { DrawerFooter } from "@/components/ui/drawer";
+import { ResponsiveOverlay } from "@/components/responsive-overlay";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -685,19 +679,12 @@ export default function ChallengesClientPage() {
         </div>
       )}
 
-      <Drawer
+      <ResponsiveOverlay
         open={createOpen}
         onOpenChange={setCreateOpen}
-        showSwipeHandle
-        swipeDirection="down"
+        title="Create a challenge"
+        description="Create a public challenge that any signed-in member can join."
       >
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Create a challenge</DrawerTitle>
-            <DrawerDescription>
-              Create a public challenge that any signed-in member can join.
-            </DrawerDescription>
-          </DrawerHeader>
           <form
             onSubmit={(event) => void createChallenge(event)}
             className="flex min-h-0 flex-1 flex-col"
@@ -790,24 +777,16 @@ export default function ChallengesClientPage() {
               </Button>
             </DrawerFooter>
           </form>
-        </DrawerContent>
-      </Drawer>
+      </ResponsiveOverlay>
 
-      <Drawer
+      <ResponsiveOverlay
         open={Boolean(detailsChallenge)}
         onOpenChange={(open) => {
           if (!open) closeChallengeDetails();
         }}
-        showSwipeHandle
-        swipeDirection="down"
+        title={detailsChallenge?.name ?? "Challenge details"}
+        description="Review the challenge and see members who chose to show their participation."
       >
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>{detailsChallenge?.name ?? "Challenge details"}</DrawerTitle>
-            <DrawerDescription>
-              Review the challenge and see members who chose to show their participation.
-            </DrawerDescription>
-          </DrawerHeader>
           {detailsChallenge && (
             <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
               <div className="flex items-center gap-3">
@@ -883,8 +862,7 @@ export default function ChallengesClientPage() {
               Close
             </Button>
           </DrawerFooter>
-        </DrawerContent>
-      </Drawer>
+      </ResponsiveOverlay>
     </div>
   );
 }

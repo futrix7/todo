@@ -34,7 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 export interface HabitFormValues {
   name: string;
   emoji: string;
-  notes: string;
+  notes?: string;
   category: string;
   startedOn: string;
   endedOn: string;
@@ -134,11 +134,12 @@ function formFromHabit(
   habit: Habit | null | undefined,
   today: string
 ): HabitFormValues {
-  if (!habit) return { ...INITIAL_FORM, startedOn: today };
+  const initial = { ...INITIAL_FORM };
+  if (!habit) return { ...initial, startedOn: today };
   return {
     name: habit.name,
     emoji: habit.emoji,
-    notes: habit.notes,
+    notes: habit.notes ?? initial.notes,
     category: habit.category,
     startedOn: habit.startedOn,
     endedOn: habit.endedOn ?? "",

@@ -3,12 +3,26 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const canonicalHost = (
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://taskflow.app"
+)
+  .replace(/^https?:\/\//, "")
+  .replace(/\/$/, "");
 
 const PUBLIC_ROUTES = new Set([
   "/login",
   "/register",
   "/forgot-password",
   "/reset-password",
+  "/auth/confirm",
+  "/auth/confirm/error",
+  "/robots.txt",
+  "/sitemap.xml",
+  "/manifest.webmanifest",
+  "/llms.txt",
+  "/llms-full.txt",
+  "/opengraph-image",
+  "/twitter-image",
 ]);
 
 function redirectTo(request: NextRequest, pathname: string) {
@@ -18,6 +32,28 @@ function redirectTo(request: NextRequest, pathname: string) {
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  const host = request.headers.get("host") ?? "";
+  const wantsWww = canonicalHost.startsWith("www.");
+  const preferredHost = wantsWww ? canonicalHost : canonicalHost.replace(/^www\./, "");
+
+  if (wantsWww && !host.startsWith("www.")) {
+    const url = new URL(request.url);
+    url.host = canonicalHost;
+    return NextResponse.redirect(url, 308);
+  }
+
+  if (!wantsWww && host.startsWith("www.")) {
+    const url = new URL(request.url);
+    url.host = preferredHost;
+    return NextResponse.redirect(url, 308);
+  }
+
+  if (pathname.length > 1 && pathname.endsWith("/")) {
+    const url = new URL(request.url);
+    url.pathname = pathname.replace(/\/+$/, "") || "/";
+    return NextResponse.redirect(url, 308);
+  }
+
   const isPublicRoute = PUBLIC_ROUTES.has(pathname);
   const isHome = pathname === "/";
 
@@ -74,6 +110,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|manifest.webmanifest|llms.txt|llms-full.txt|opengraph-image|twitter-image|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

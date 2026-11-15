@@ -626,7 +626,7 @@ export default function AnalyticsClientPage() {
               )}
         </section>
 
-        <section className="min-w-0 border-b px-3 py-3 sm:col-span-2 sm:border-r-0 sm:px-4 md:px-6 lg:px-8">
+        <section className="min-w-0 border-b px-3 py-3 sm:col-span-1 sm:border-r sm:px-4 md:px-6 lg:px-8">
           <div className="mb-2 flex items-center gap-2">
             <CheckCircle2 className="size-4 text-primary" />
             <h2 className="text-sm font-semibold">Habit consistency</h2>

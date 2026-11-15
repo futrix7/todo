@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Dialog,
   DialogContent,
@@ -162,6 +161,7 @@ export default function DaysClientPage() {
     : "0";
   const ratingScore =
     rating === undefined ? undefined : getDayRatingScore(rating);
+  const selectedScore = ratingScore ?? mood;
 
   async function handleSave() {
     if (!today || mood === undefined || rating === undefined) {
@@ -218,7 +218,39 @@ export default function DaysClientPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5 sm:gap-6">
+    <div className="flex min-w-0 flex-col gap-5 sm:gap-6">
+      <header className="flex flex-col gap-4 border-b border-border/70 pb-5 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
+            <SmilePlus className="size-6" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+              Daily reflection
+            </p>
+            <h1 className="mt-1 font-heading text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
+              Days
+            </h1>
+            <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
+              Make space to check in, notice your patterns, and see how your days change over time.
+            </p>
+          </div>
+        </div>
+        {today && (
+          <div className="flex shrink-0 items-center gap-3 rounded-xl border border-border/70 bg-card/80 px-4 py-3 shadow-sm">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+              <CalendarDays className="size-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Today</p>
+              <p className="mt-0.5 text-sm font-semibold">
+                {longDateLabel(today)}
+              </p>
+            </div>
+          </div>
+        )}
+      </header>
+
       <Dialog
         open={resetConfirmationOpen}
         onOpenChange={setResetConfirmationOpen}
@@ -254,7 +286,7 @@ export default function DaysClientPage() {
       <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
         {/* Check-in */}
         <FadeIn className="lg:col-span-2">
-          <Card className="rounded-2xl border-border/70 shadow-sm">
+          <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
             <CardHeader>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
@@ -280,22 +312,36 @@ export default function DaysClientPage() {
               </div>
             </CardHeader>
             <CardContent className="flex flex-col gap-5">
-              {/* Emojis */}
-              <div className="flex flex-col gap-2">
-                <Label>Pick an emoji</Label>
-                <div className="grid grid-cols-5 gap-2">
+              <div className="flex flex-col gap-2.5">
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <Label className="text-sm font-medium">Rate your day</Label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Choose the emoji that best matches how today felt.
+                    </p>
+                  </div>
+                  {selectedScore !== undefined && (
+                    <span className="text-sm font-medium text-muted-foreground">
+                      {MOODS.find((item) => item.value === selectedScore)?.emoji}{" "}
+                      {RATING_LABELS[selectedScore - 1]}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-5 gap-2.5 sm:gap-3">
                   {MOODS.map((m) => {
-                    const active = mood !== undefined && mood === m.value;
+                    const active = selectedScore === m.value;
                     return (
                       <motion.button
                         key={m.value}
                         type="button"
-                        onClick={() => updateDraft({ mood: m.value })}
+                        onClick={() =>
+                          updateDraft({ mood: m.value, rating: m.value })
+                        }
                         whileTap={{ scale: 0.9 }}
                         animate={active ? { scale: 1.06 } : { scale: 1 }}
                         transition={{ type: "spring", bounce: 0.4, duration: 0.4 }}
                         className={cn(
-                          "flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border p-2 text-2xl transition-colors active:scale-[0.97] sm:p-3",
+                          "flex min-h-[82px] flex-col items-center justify-center gap-1.5 rounded-xl border p-2 text-2xl transition-colors active:scale-[0.97] sm:min-h-[92px] sm:p-3",
                           active
                             ? "border-primary bg-primary/10 ring-2 ring-primary/40"
                             : "bg-background hover:bg-muted"
@@ -303,10 +349,10 @@ export default function DaysClientPage() {
                         aria-pressed={active}
                         aria-label={m.label}
                       >
-                        <span aria-hidden>{m.emoji}</span>
+                        <span aria-hidden className="leading-none">{m.emoji}</span>
                         <span
                           className={cn(
-                            "text-[11px] font-medium",
+                            "text-xs font-medium",
                             active ? "text-foreground" : "text-muted-foreground"
                           )}
                         >
@@ -320,61 +366,27 @@ export default function DaysClientPage() {
 
               {/* Notes */}
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="day-note">Notes</Label>
+                <Label htmlFor="day-note" className="text-sm font-medium">Notes</Label>
                 <Textarea
                   id="day-note"
-                  rows={3}
+                  rows={4}
                   value={note}
                   placeholder="Enter your notes here..."
                   onChange={(e) => updateDraft({ note: e.target.value })}
+                  className="min-h-[120px] resize-y"
                 />
               </div>
 
-              {/* Rating */}
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-2">
-                  <Label>Rate your day</Label>
-                  {ratingScore !== undefined && (
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {ratingScore}/5 · {RATING_LABELS[ratingScore - 1]}
-                    </span>
-                  )}
-                </div>
-                <ToggleGroup
-                  value={ratingScore === undefined ? [] : [String(ratingScore)]}
-                  onValueChange={(v) => {
-                    const score = Number(v[0]);
-                    if (Number.isInteger(score) && score >= 1 && score <= 5) {
-                      updateDraft({ rating: score as DayRating });
-                    }
-                  }}
-                  variant="outline"
-                  className="w-full gap-1"
-                >
-                  {RATING_LABELS.map((label, index) => (
-                    <ToggleGroupItem
-                      key={label}
-                      value={String(index + 1)}
-                      aria-label={`${index + 1} out of 5: ${label}`}
-                      className="h-12 flex-1 flex-col gap-0.5 rounded-lg px-1 text-xs aria-pressed:border-primary/50 aria-pressed:bg-primary/10 aria-pressed:text-primary sm:h-14"
-                    >
-                      <span className="font-semibold">{index + 1}</span>
-                      <span className="text-[9px] leading-3 sm:text-[10px]">
-                        {label}
-                      </span>
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
-              </div>
-
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <Button
                   variant="ghost"
+                  className="w-full sm:w-auto"
                   onClick={() => setResetConfirmationOpen(true)}
                 >
                   <Pencil /> Reset
                 </Button>
                 <Button
+                  className="w-full sm:w-auto"
                   onClick={handleSave}
                   disabled={!today || mood === undefined || rating === undefined}
                 >
@@ -387,29 +399,39 @@ export default function DaysClientPage() {
 
         {/* Summary */}
         <FadeIn delay={0.08}>
-          <Card className="h-full rounded-2xl border-border/70 shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CalendarDays className="size-4 text-primary" /> This month
-              </CardTitle>
+          <Card className="h-full rounded-2xl border-border/70 bg-card/80 shadow-sm">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <CalendarDays className="size-4 text-primary" /> Check-in overview
+                  </CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Your saved reflections
+                  </p>
+                </div>
+                <Badge variant="secondary" className="shrink-0">
+                  {entries.length} {entries.length === 1 ? "day" : "days"}
+                </Badge>
+              </div>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-              <div className="flex items-center justify-around rounded-xl bg-muted/50 p-4">
+              <div className="flex items-center justify-around rounded-xl bg-muted/50 p-3 sm:p-4">
                 {MOODS.map((m) => {
                   const count = entries.filter((e) => e.mood === m.value).length;
                   const pct = entries.length ? (count / entries.length) * 100 : 0;
                   return (
-                    <div key={m.value} className="flex flex-col items-center gap-1">
+                    <div key={m.value} className="flex flex-col items-center gap-1.5">
                       <span
                         className={cn(
-                          "text-2xl transition-opacity",
+                          "text-2xl leading-none transition-opacity sm:text-[2rem]",
                           mood === m.value ? "opacity-100" : "opacity-45"
                         )}
                         aria-hidden
                       >
                         {m.emoji}
                       </span>
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {pct.toFixed(0)}%
                       </span>
                     </div>
@@ -417,27 +439,27 @@ export default function DaysClientPage() {
                 })}
               </div>
               {!entries.length && (
-                <p className="text-center text-xs text-muted-foreground">
+                <p className="text-center text-sm text-muted-foreground">
                   Your saved check-ins will appear in this summary.
                 </p>
               )}
 
-              <div className="grid grid-cols-3 items-stretch gap-2 text-center">
-                <div className="flex min-h-20 flex-col items-center rounded-lg border p-3">
-                  <p className="flex h-7 items-center font-heading text-xl font-semibold tabular-nums">{entries.length ? avgMood : "—"}</p>
-                  <p className="mt-auto flex min-h-7 items-center text-[11px] leading-4 text-muted-foreground">Avg mood</p>
+              <div className="grid grid-cols-3 items-stretch gap-2.5 text-center">
+                <div className="flex min-h-[92px] flex-col items-center justify-center rounded-lg border p-3">
+                  <p className="flex h-8 items-center font-heading text-xl font-semibold tabular-nums sm:text-2xl">{entries.length ? avgMood : "—"}</p>
+                  <p className="mt-1 flex min-h-7 items-center text-xs leading-4 text-muted-foreground">Avg mood</p>
                 </div>
-                <div className="flex min-h-20 flex-col items-center rounded-lg border p-3">
-                  <p className="flex h-7 items-center font-heading text-xl font-semibold text-primary tabular-nums">
+                <div className="flex min-h-[92px] flex-col items-center justify-center rounded-lg border p-3">
+                  <p className="flex h-8 items-center font-heading text-xl font-semibold text-primary tabular-nums sm:text-2xl">
                     {entries.length ? avgRating : "—"}
                   </p>
-                  <p className="mt-auto flex min-h-7 items-center text-[11px] leading-4 text-muted-foreground">Avg rating</p>
+                  <p className="mt-1 flex min-h-7 items-center text-xs leading-4 text-muted-foreground">Avg rating</p>
                 </div>
-                <div className="flex min-h-20 flex-col items-center rounded-lg border p-3">
-                  <p className="flex h-7 items-center font-heading text-xl font-semibold text-primary tabular-nums">
+                <div className="flex min-h-[92px] flex-col items-center justify-center rounded-lg border p-3">
+                  <p className="flex h-8 items-center font-heading text-xl font-semibold text-primary tabular-nums sm:text-2xl">
                     {entries.length}
                   </p>
-                  <p className="mt-auto flex min-h-7 items-center text-[11px] leading-4 text-muted-foreground">Check-ins</p>
+                  <p className="mt-1 flex min-h-7 items-center text-xs leading-4 text-muted-foreground">Check-ins</p>
                 </div>
               </div>
 
@@ -448,7 +470,7 @@ export default function DaysClientPage() {
 
       {/* Rating graph */}
       <FadeIn delay={0.1}>
-        <Card className="rounded-2xl border-border/70 shadow-sm">
+        <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
           <CardHeader>
             <CardTitle>Day rating over time</CardTitle>
           </CardHeader>
@@ -526,11 +548,12 @@ export default function DaysClientPage() {
 
       {/* Recent check-ins */}
       <FadeIn delay={0.14}>
-        <Card className="rounded-2xl border-border/70 shadow-sm">
+        <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
           <CardHeader>
             <CardTitle>Recent check-ins</CardTitle>
           </CardHeader>
           <CardContent>
+            {entries.length ? (
             <ul className="flex flex-col gap-2.5">
               {[...entries]
                 .sort((a, b) =>
@@ -547,7 +570,7 @@ export default function DaysClientPage() {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.35, delay: i * 0.05, ease: EASE }}
-                      className="flex items-start gap-3 rounded-xl border p-3.5"
+                      className="flex items-start gap-3 rounded-xl border p-4"
                     >
                       <span className="text-2xl" aria-hidden>
                         {emoji?.emoji ?? "😐"}
@@ -575,7 +598,7 @@ export default function DaysClientPage() {
                             {score}/5 · {RATING_LABELS[score - 1]}
                           </Badge>
                         </div>
-                        <p className="mt-0.5 text-sm text-muted-foreground">
+                        <p className="mt-0.5 break-words text-sm text-muted-foreground">
                           {entry.note || "No notes for this day."}
                         </p>
                       </div>
@@ -583,6 +606,19 @@ export default function DaysClientPage() {
                   );
                 })}
             </ul>
+            ) : (
+              <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed bg-muted/20 px-5 py-10 text-center">
+                <span className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <CalendarDays className="size-5" aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="font-semibold">No check-ins yet</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Your saved reflections will appear here as you check in.
+                  </p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </FadeIn>

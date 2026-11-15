@@ -122,6 +122,15 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
 import {
   isSupabaseConfigured,
@@ -515,13 +524,95 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
     }),
   ];
 
+  const isMobile = useIsMobile();
+  const groupEditorTitle = editingGroup
+    ? "Edit task group"
+    : "Create a task group";
+  const groupEditorDescription = editingGroup
+    ? "Update the name or icon used to organize this group."
+    : "Give related tasks a home. Choose a name and an icon.";
+  const groupEditorFields = (
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="task-group-name">Group name</Label>
+        <Input
+          id="task-group-name"
+          value={newGroupName}
+          onChange={(event) => setNewGroupName(event.target.value)}
+          placeholder="e.g. Personal projects"
+          aria-describedby={sidebarErrorId}
+          maxLength={60}
+          autoComplete="off"
+          autoFocus
+          required
+        />
+      </div>
+      <fieldset className="flex min-h-0 flex-col gap-2">
+        <legend className="text-sm font-medium">Choose an icon</legend>
+        <div
+          className="group-icon-scroll-region grid max-h-44 grid-cols-6 gap-1 overflow-y-auto overscroll-contain rounded-lg border p-2 sm:grid-cols-8"
+          role="radiogroup"
+          aria-label="Choose a group icon"
+        >
+          {Object.entries(TASK_GROUP_ICONS).map(([id, Icon]) => (
+            <Button
+              key={id}
+              type="button"
+              variant={newGroupIcon === id ? "secondary" : "ghost"}
+              className={cn(
+                "size-10 p-0",
+                newGroupIcon === id && "ring-2 ring-primary/40"
+              )}
+              aria-label={`${id.replaceAll("_", " ")} icon`}
+              role="radio"
+              aria-checked={newGroupIcon === id}
+              onClick={() => setNewGroupIcon(id as keyof typeof TASK_GROUP_ICONS)}
+            >
+              <Icon className="size-4" />
+            </Button>
+          ))}
+        </div>
+      </fieldset>
+      <p id={sidebarErrorId} className="sr-only">
+        Group names must be unique and no longer than 60 characters.
+      </p>
+    </div>
+  );
+  const groupEditorActions = (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={savingGroup}
+        onClick={() => setCreateOpen(false)}
+      >
+        Cancel
+      </Button>
+      <Button type="submit" disabled={savingGroup}>
+        {editingGroup ? <Pencil /> : <FolderPlus />}
+        {savingGroup
+          ? editingGroup
+            ? "Saving…"
+            : "Creating…"
+          : editingGroup
+            ? "Save changes"
+            : "Create group"}
+      </Button>
+    </>
+  );
+  const handleGroupEditorOpenChange = (open: boolean) => {
+    if (savingGroup) return;
+    setCreateOpen(open);
+    if (!open) resetGroupForm();
+  };
+
   return (
     <aside
       ref={sidebarRef}
       className="relative w-full shrink-0 border-b bg-sidebar/40 px-2 pt-2 pb-0 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:max-h-dvh lg:w-[var(--task-groups-width)] lg:basis-[var(--task-groups-width)] lg:flex-col lg:overflow-hidden lg:border-b-0 lg:border-r lg:bg-sidebar lg:px-3 lg:py-4"
       style={{ "--task-groups-width": `${width}px` } as React.CSSProperties}
     >
-      <div className="mb-2 flex min-h-9 w-full shrink-0 items-center gap-2 px-1.5 lg:px-2.5">
+      <div className="mb-2 flex min-h-9 w-full shrink-0 items-center gap-2 px-1.5 lg:hidden">
         <Link
           href="/tasks"
           aria-label="Taskflow — tasks"
@@ -622,102 +713,47 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
         <Plus className="size-3.5 shrink-0" />
         Create a group
       </Button>
-      <Drawer
-        open={createOpen}
-        onOpenChange={(open) => {
-          if (!savingGroup) {
-            setCreateOpen(open);
-            if (!open) resetGroupForm();
-          }
-        }}
-        swipeDirection="down"
-      >
-        <DrawerContent className="max-h-[min(90dvh,46rem)]">
-          <DrawerHeader>
-            <DrawerTitle>
-              {editingGroup ? "Edit task group" : "Create a task group"}
-            </DrawerTitle>
-            <DrawerDescription>
-              {editingGroup
-                ? "Update the name or icon used to organize this group."
-                : "Give related tasks a home. Choose a name and an icon."}
-            </DrawerDescription>
-          </DrawerHeader>
-          <form
-            onSubmit={createGroup}
-            autoComplete="off"
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="task-group-name">Group name</Label>
-                <Input
-                  id="task-group-name"
-                  value={newGroupName}
-                  onChange={(event) => setNewGroupName(event.target.value)}
-                  placeholder="e.g. Personal projects"
-                  aria-describedby={sidebarErrorId}
-                  maxLength={60}
-                  autoComplete="off"
-                  autoFocus
-                  required
-                />
-              </div>
-              <fieldset className="flex min-h-0 flex-col gap-2">
-                <legend className="text-sm font-medium">Choose an icon</legend>
-                <div
-                  className="group-icon-scroll-region grid max-h-44 grid-cols-6 gap-1 overflow-y-auto overscroll-contain rounded-lg border p-2 sm:grid-cols-8"
-                  role="radiogroup"
-                  aria-label="Choose a group icon"
-                >
-                  {Object.entries(TASK_GROUP_ICONS).map(([id, Icon]) => (
-                    <Button
-                      key={id}
-                      type="button"
-                      variant={newGroupIcon === id ? "secondary" : "ghost"}
-                      className={cn(
-                        "size-10 p-0",
-                        newGroupIcon === id && "ring-2 ring-primary/40"
-                      )}
-                      aria-label={`${id.replaceAll("_", " ")} icon`}
-                      role="radio"
-                      aria-checked={newGroupIcon === id}
-                      onClick={() =>
-                        setNewGroupIcon(id as keyof typeof TASK_GROUP_ICONS)
-                      }
-                    >
-                      <Icon className="size-4" />
-                    </Button>
-                  ))}
-                </div>
-              </fieldset>
-              <p id={sidebarErrorId} className="sr-only">
-                Group names must be unique and no longer than 60 characters.
-              </p>
-            </div>
-            <DrawerFooter>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={savingGroup}
-                onClick={() => setCreateOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={savingGroup}>
-                {editingGroup ? <Pencil /> : <FolderPlus />}
-                {savingGroup
-                  ? editingGroup
-                    ? "Saving…"
-                    : "Creating…"
-                  : editingGroup
-                    ? "Save changes"
-                    : "Create group"}
-              </Button>
-            </DrawerFooter>
-          </form>
-        </DrawerContent>
-      </Drawer>
+      {isMobile ? (
+        <Drawer
+          open={createOpen}
+          onOpenChange={handleGroupEditorOpenChange}
+          swipeDirection="down"
+        >
+          <DrawerContent className="max-h-[min(90dvh,46rem)]">
+            <DrawerHeader>
+              <DrawerTitle>{groupEditorTitle}</DrawerTitle>
+              <DrawerDescription>{groupEditorDescription}</DrawerDescription>
+            </DrawerHeader>
+            <form
+              onSubmit={createGroup}
+              autoComplete="off"
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              {groupEditorFields}
+              <DrawerFooter>{groupEditorActions}</DrawerFooter>
+            </form>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog open={createOpen} onOpenChange={handleGroupEditorOpenChange}>
+          <DialogContent className="max-w-lg gap-0 p-0 sm:max-w-lg">
+            <DialogHeader className="px-5 pb-4 pt-5">
+              <DialogTitle>{groupEditorTitle}</DialogTitle>
+              <DialogDescription>{groupEditorDescription}</DialogDescription>
+            </DialogHeader>
+            <form
+              onSubmit={createGroup}
+              autoComplete="off"
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              {groupEditorFields}
+              <DialogFooter className="px-5 pt-3 pb-5">
+                {groupEditorActions}
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
       <div
         role="separator"
         aria-label="Resize task groups sidebar"
@@ -966,7 +1002,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <div
             className={cn(
-              "w-full min-w-0",
+              "w-full min-w-0 app-scroll-region",
               isTasksPage && "flex min-h-0 flex-1 flex-col",
               isCalendarPage && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
             )}

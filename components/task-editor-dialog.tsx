@@ -13,6 +13,14 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,7 +33,7 @@ import type { Priority, Repeat, Task, TaskGroup } from "@/lib/types";
 
 export interface TaskFormValues {
   title: string;
-  notes: string;
+  notes?: string;
   groupId: string;
   priority: Priority;
   category: string;
@@ -78,7 +86,7 @@ export function taskFromForm(
   return {
     id: existing?.id ?? `t${Date.now().toString(36)}`,
     title: form.title.trim(),
-    notes: form.notes.trim() || undefined,
+    notes: (form.notes ?? "").trim() || undefined,
     groupId: form.groupId || undefined,
     completed: existing?.completed ?? false,
     priority: form.priority,
@@ -113,7 +121,6 @@ function TaskForm({
   onCancel: () => void;
 }) {
   const isEditing = Boolean(task);
-  // Always start on the simple options so editing never jumps to Advanced.
   const [tab, setTab] = React.useState<"simple" | "advanced">("simple");
   const [form, setForm] = React.useState<TaskFormValues>(() =>
     task
@@ -145,24 +152,41 @@ function TaskForm({
       event.key !== "Enter" ||
       event.shiftKey ||
       event.nativeEvent.isComposing ||
-      (!(event.target instanceof HTMLInputElement) &&
-        !(event.target instanceof HTMLTextAreaElement))
+      !(event.target instanceof HTMLInputElement) &&
+        !(event.target instanceof HTMLTextAreaElement)
     ) {
       return;
     }
 
+    const isTitleField =
+      event.target instanceof HTMLInputElement && event.target.id === "task-title";
+
     const fields = Array.from(
       event.currentTarget.querySelectorAll<HTMLElement>(
-        'input:not([type="hidden"]):not(:disabled), textarea:not(:disabled), [data-slot="select-trigger"]:not([aria-disabled="true"]), [data-slot="switch"]:not([data-disabled="true"])'
+        'input:not([type="hidden"]):not(:disabled),textarea:not(:disabled),[data-slot="select-trigger"]:not([aria-disabled="true"]),[data-slot="switch"]:not([data-disabled="true"])'
       )
     ).filter((field) => field.getClientRects().length > 0);
     const currentIndex = fields.indexOf(event.target);
     if (currentIndex === -1) return;
 
     event.preventDefault();
+
+    // If on title field, move focus to the add task button
+    if (isTitleField) {
+      const firstButton = event.currentTarget.querySelector<
+        HTMLButtonElement >('button[type="submit"]');
+      if (firstButton) {
+        firstButton.focus();
+        return;
+      }
+    }
+
     const nextField = fields[currentIndex + 1];
-    if (nextField) nextField.focus();
-    else event.currentTarget.requestSubmit();
+    if (nextField) {
+      nextField.focus();
+    } else {
+      event.currentTarget.requestSubmit();
+    }
   }
 
   return (
@@ -173,143 +197,143 @@ function TaskForm({
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
-      <Tabs value={tab} onValueChange={(value) => setTab(value as "simple" | "advanced")}>
-        <TabsList variant="line" className="w-full">
-          <TabsTrigger value="simple" className="flex-1">
-            <CheckSquare /> Simple
-          </TabsTrigger>
-          <TabsTrigger value="advanced" className="flex-1">
-            <CalendarClock /> Advanced
-          </TabsTrigger>
-        </TabsList>
+        <Tabs value={tab} onValueChange={(value) => setTab(value as "simple" | "advanced")}>
+          <TabsList variant="line" className="w-full">
+            <TabsTrigger value="simple" className="flex-1">
+              <CheckSquare /> Simple
+            </TabsTrigger>
+            <TabsTrigger value="advanced" className="flex-1">
+              <CalendarClock /> Advanced
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="simple" className="flex flex-col gap-3 pt-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="task-title">Title</Label>
-            <Input
-              id="task-title"
-              value={form.title}
-              onChange={(event) => set("title", event.target.value)}
-              autoComplete="off"
-              autoFocus
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="task-notes">Notes</Label>
-            <Textarea
-              id="task-notes"
-              rows={3}
-              value={form.notes}
-              onChange={(event) => set("notes", event.target.value)}
-              autoComplete="off"
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="advanced" className="flex flex-col gap-3 pt-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="task-title-adv">Title</Label>
-            <Input
-              id="task-title-adv"
-              value={form.title}
-              onChange={(event) => set("title", event.target.value)}
-              autoComplete="off"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+          <TabsContent value="simple" className="flex flex-col gap-3 pt-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="task-date">Due date</Label>
+              <Label htmlFor="task-title">Title</Label>
               <Input
-                id="task-date"
-                type="date"
-                value={form.dueDate}
-                onChange={(event) => set("dueDate", event.target.value)}
+                id="task-title"
+                value={form.title}
+                onChange={(event) => set("title", event.target.value)}
+                autoComplete="off"
+                autoFocus
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="task-time">Start time</Label>
-              <Input
-                id="task-time"
-                type="time"
-                value={form.startTime}
-                onChange={(event) => set("startTime", event.target.value)}
+              <Label htmlFor="task-notes">Notes</Label>
+              <Textarea
+                id="task-notes"
+                rows={3}
+                value={form.notes}
+                onChange={(event) => set("notes", event.target.value)}
+                autoComplete="off"
               />
             </div>
-          </div>
+          </TabsContent>
 
-          <div className="grid grid-cols-2 gap-3">
+          <TabsContent value="advanced" className="flex flex-col gap-3 pt-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="task-end-time">End time</Label>
+              <Label htmlFor="task-title-adv">Title</Label>
               <Input
-                id="task-end-time"
-                type="time"
-                value={form.endTime}
-                onChange={(event) => set("endTime", event.target.value)}
+                id="task-title-adv"
+                value={form.title}
+                onChange={(event) => set("title", event.target.value)}
+                autoComplete="off"
               />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Duration</Label>
-              {scheduledMinutes ? (
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="task-date">Due date</Label>
                 <Input
-                  readOnly
-                  value={`${scheduledMinutes} min`}
-                  aria-label="Duration from start and end time"
-                  className="bg-muted/40"
+                  id="task-date"
+                  type="date"
+                  value={form.dueDate}
+                  onChange={(event) => set("dueDate", event.target.value)}
                 />
-              ) : (
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="task-time">Start time</Label>
+                <Input
+                  id="task-time"
+                  type="time"
+                  value={form.startTime}
+                  onChange={(event) => set("startTime", event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="task-end-time">End time</Label>
+                <Input
+                  id="task-end-time"
+                  type="time"
+                  value={form.endTime}
+                  onChange={(event) => set("endTime", event.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Duration</Label>
+                {scheduledMinutes ? (
+                  <Input
+                    readOnly
+                    value={`${scheduledMinutes} min`}
+                    aria-label="Duration from start and end time"
+                    className="bg-muted/40"
+                  />
+                ) : (
+                  <Select
+                    value={form.duration}
+                    onValueChange={(value) => set("duration", Number(value))}
+                    items={DURATIONS.map((duration) => ({
+                      value: duration,
+                      label: `${duration} min`,
+                    }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DURATIONS.map((duration) => (
+                        <SelectItem key={duration} value={duration}>
+                          {duration} min
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label>Repeat</Label>
                 <Select
-                  value={form.duration}
-                  onValueChange={(value) => set("duration", Number(value))}
-                  items={DURATIONS.map((duration) => ({
-                    value: duration,
-                    label: `${duration} min`,
+                  value={form.repeat}
+                  onValueChange={(value) => set("repeat", value as Repeat)}
+                  items={REPEATS.map((repeat) => ({
+                    value: repeat.value,
+                    label: repeat.label,
                   }))}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {DURATIONS.map((duration) => (
-                      <SelectItem key={duration} value={duration}>
-                        {duration} min
+                    {REPEATS.map((repeat) => (
+                      <SelectItem key={repeat.value} value={repeat.value}>
+                        {repeat.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label>Repeat</Label>
-              <Select
-                value={form.repeat}
-                onValueChange={(value) => set("repeat", value as Repeat)}
-                items={REPEATS.map((repeat) => ({
-                  value: repeat.value,
-                  label: repeat.label,
-                }))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REPEATS.map((repeat) => (
-                    <SelectItem key={repeat.value} value={repeat.value}>
-                      {repeat.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Task group</Label>
-              <Select
-                value={form.groupId || "none"}
-                onValueChange={(value) =>
-                  set("groupId", value === null || value === "none" ? "" : value)
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Task group</Label>
+                <Select
+                  value={form.groupId || "none"}
+                  onValueChange={(value) =>
+                    set("groupId", value === null || value === "none" ? "" : value)
                 }
                 items={[
                   { value: "none", label: "No group" },
@@ -318,99 +342,97 @@ function TaskForm({
                     label: group.name,
                   })),
                 ]}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No group</SelectItem>
-                  {groups.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      {group.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No group</SelectItem>
+                    {groups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Priority</Label>
+                <Select
+                  value={form.priority}
+                  onValueChange={(value) => set("priority", value as Priority)}
+                  items={[
+                    { value: "low", label: "Low" },
+                    { value: "medium", label: "Medium" },
+                    { value: "high", label: "High" },
+                  ]}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Category</Label>
+                <Select
+                  value={form.category}
+                  onValueChange={(value) => set("category", value ?? form.category)}
+                  items={CATEGORIES.map((category) => ({
+                    value: category,
+                    label: category,
+                  }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIES.map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Priority</Label>
-              <Select
-                value={form.priority}
-                onValueChange={(value) => set("priority", value as Priority)}
-                items={[
-                  { value: "low", label: "Low" },
-                  { value: "medium", label: "Medium" },
-                  { value: "high", label: "High" },
-                ]}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Category</Label>
-              <Select
-                value={form.category}
-                onValueChange={(value) =>
-                  set("category", value ?? form.category)
-                }
-                items={CATEGORIES.map((category) => ({
-                  value: category,
-                  label: category,
-                }))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map((category) => (
-                    <SelectItem key={category} value={category}>
-                      {category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="task-notes-adv">Notes</Label>
-            <Textarea
-              id="task-notes-adv"
-              rows={2}
-              value={form.notes}
-              onChange={(event) => set("notes", event.target.value)}
-              autoComplete="off"
-            />
-          </div>
-
-          <div className="flex flex-col gap-2.5 rounded-lg border bg-muted/40 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-medium">Reminder</p>
-              <Switch
-                checked={form.reminder}
-                onCheckedChange={(value) => set("reminder", value)}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="task-notes-adv">Notes</Label>
+              <Textarea
+                id="task-notes-adv"
+                rows={2}
+                value={form.notes}
+                onChange={(event) => set("notes", event.target.value)}
+                autoComplete="off"
               />
             </div>
-            <div className="h-px bg-border" />
-            <div className="flex items-center justify-between gap-3">
-              <p className="flex items-center gap-1.5 text-sm font-medium">
-                <Flame className="size-3.5 text-primary" /> Track streak
-              </p>
-              <Switch
-                checked={form.streakEnabled}
-                onCheckedChange={(value) => set("streakEnabled", value)}
-              />
+
+            <div className="flex flex-col gap-2.5 rounded-lg border bg-muted/40 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">Reminder</p>
+                <Switch
+                  checked={form.reminder}
+                  onCheckedChange={(value) => set("reminder", value)}
+                />
+              </div>
+              <div className="h-px bg-border" />
+              <div className="flex items-center justify-between gap-3">
+                <p className="flex items-center gap-1.5 text-sm font-medium">
+                  <Flame className="size-3.5 text-primary" /> Track streak
+                </p>
+                <Switch
+                  checked={form.streakEnabled}
+                  onCheckedChange={(value) => set("streakEnabled", value)}
+                />
+              </div>
             </div>
-          </div>
-        </TabsContent>
-      </Tabs>
+          </TabsContent>
+        </Tabs>
       </div>
 
       <DrawerFooter>
@@ -445,44 +467,81 @@ export function TaskEditorDialog({
   const [closingTask, setClosingTask] = React.useState(task);
   const [formResetKey, setFormResetKey] = React.useState(0);
   const displayedTask = open ? task : closingTask;
+  const isMobile = useIsMobile();
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) setClosingTask(task);
+    onOpenChange(nextOpen);
+  };
+
+  const handleOpenChangeComplete = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setClosingTask(null);
+      setFormResetKey((current) => current + 1);
+    }
+  };
+
+  const editorForm = (
+    <TaskForm
+      key={
+        `${displayedTask?.id ?? "new"}-${defaultGroupId ?? "none"}-${defaultDueDate ?? "undated"}-${formResetKey}`
+      }
+      task={displayedTask}
+      groups={groups}
+      defaultGroupId={defaultGroupId}
+      defaultDueDate={defaultDueDate}
+      onSave={(values) => {
+        setClosingTask(displayedTask);
+        onSave(values);
+      }}
+      onCancel={() => onOpenChange(false)}
+    />
+  );
+
+  if (isMobile) {
+    return (
+      <Drawer
+        open={open}
+        onOpenChange={handleOpenChange}
+        onOpenChangeComplete={handleOpenChangeComplete}
+        swipeDirection="down"
+      >
+        <DrawerContent className="max-h-[calc(100dvh-0.5rem)]">
+          <DrawerHeader>
+            <DrawerTitle>
+              {displayedTask ? "Edit task" : "New task"}
+            </DrawerTitle>
+            <DrawerDescription>
+              {displayedTask
+                ? "Update the details for this task."
+                : "Add a task to your daily plan."}
+            </DrawerDescription>
+          </DrawerHeader>
+          {editorForm}
+        </DrawerContent>
+      </Drawer>
+    );
+  }
 
   return (
-    <Drawer
+    <Dialog
       open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) setClosingTask(task);
-        onOpenChange(nextOpen);
-      }}
-      onOpenChangeComplete={(nextOpen) => {
-        if (!nextOpen) {
-          setClosingTask(null);
-          setFormResetKey((current) => current + 1);
-        }
-      }}
-      swipeDirection="down"
+      onOpenChange={handleOpenChange}
+      onOpenChangeComplete={handleOpenChangeComplete}
     >
-      <DrawerContent className="max-h-[calc(100dvh-0.5rem)]">
-        <DrawerHeader>
-          <DrawerTitle>{displayedTask ? "Edit task" : "New task"}</DrawerTitle>
-          <DrawerDescription>
+      <DialogContent className="max-w-xl gap-0 p-0 sm:max-w-xl">
+        <DialogHeader className="px-5 pt-5 pb-4">
+          <DialogTitle>
+            {displayedTask ? "Edit task" : "New task"}
+          </DialogTitle>
+          <DialogDescription>
             {displayedTask
               ? "Update the details for this task."
               : "Add a task to your daily plan."}
-          </DrawerDescription>
-        </DrawerHeader>
-        <TaskForm
-          key={`${displayedTask?.id ?? "new"}-${defaultGroupId ?? "none"}-${defaultDueDate ?? "undated"}-${formResetKey}`}
-          task={displayedTask}
-          groups={groups}
-          defaultGroupId={defaultGroupId}
-          defaultDueDate={defaultDueDate}
-          onSave={(form) => {
-            setClosingTask(displayedTask);
-            onSave(form);
-          }}
-          onCancel={() => onOpenChange(false)}
-        />
-      </DrawerContent>
-    </Drawer>
+          </DialogDescription>
+        </DialogHeader>
+        {editorForm}
+      </DialogContent>
+    </Dialog>
   );
 }

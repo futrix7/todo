@@ -47,6 +47,14 @@ import { HabitIcon } from "@/components/habit-icon";
 import { PageLoadingSkeleton } from "@/components/page-loading-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 
@@ -660,6 +668,7 @@ function HabitMonthGrid({
   logs,
   savingIds,
   onToggle,
+  onLogValue,
   onEdit,
 }: {
   habits: Habit[];
@@ -674,12 +683,29 @@ function HabitMonthGrid({
   logs: HabitLog[];
   savingIds: Set<string>;
   onToggle: (habit: Habit, date: string, log?: HabitLog) => void;
+  onLogValue: (
+    habit: Habit,
+    date: string,
+    value: number,
+    status: HabitLogStatus | null
+  ) => void;
   onEdit: (habit: Habit) => void;
 }) {
+  const [editingValue, setEditingValue] = React.useState<{
+    habit: Habit;
+    date: string;
+    value: string;
+  } | null>(null);
   const logsByDate = React.useMemo(
     () => new Map(logs.map((log) => [`${log.habitId}:${log.completedOn}`, log])),
     [logs]
   );
+  const editingValueLog = editingValue
+    ? logsByDate.get(`${editingValue.habit.id}:${editingValue.date}`)
+    : undefined;
+  const editingValueSaving = editingValue
+    ? savingIds.has(editingValue.habit.id)
+    : false;
   const columns = dates.length
     ? `minmax(18rem, 22rem) repeat(${dates.length}, minmax(2.75rem, 1fr))`
     : "minmax(18rem, 22rem)";
@@ -875,15 +901,23 @@ function HabitMonthGrid({
                       day: "numeric",
                     });
                     const labelStatus = completed
-                      ? "completed"
+                      ? habit.type === "count" || habit.type === "measure"
+                        ? `completed: ${log.value}${habit.unit ? ` ${habit.unit}` : ""}`
+                        : "completed"
                       : skipped
                         ? "grace day"
                         : inProgress
                           ? `in progress: ${log.value}${habit.unit ? ` ${habit.unit}` : ""}`
                           : "not completed";
-                    const actionLabel = completed
-                      ? "activate to undo completion"
-                      : "activate to mark completed";
+                    const isQuantified =
+                      habit.type === "count" || habit.type === "measure";
+                    const actionLabel = isQuantified
+                      ? `activate to ${log ? "edit" : "log"} ${
+                          habit.type === "count" ? "count" : "amount"
+                        }`
+                      : completed
+                        ? "activate to undo completion"
+                        : "activate to mark completed";
 
                     return (
                       <div
@@ -910,18 +944,39 @@ function HabitMonthGrid({
                             } ${future ? "opacity-45" : ""}`}
                             disabled={disabled}
                             aria-label={`${habit.name}, ${labelDate}: ${labelStatus}; ${actionLabel}${future ? ", upcoming" : ""}`}
-                            aria-pressed={completed}
+                            aria-pressed={isQuantified ? undefined : completed}
                             title={`${labelDate}: ${labelStatus}`}
-                            onClick={() => onToggle(habit, date, log)}
+                            onClick={() => {
+                              if (isQuantified) {
+                                setEditingValue({
+                                  habit,
+                                  date,
+                                  value:
+                                    log && log.status !== "skipped"
+                                      ? String(log.value)
+                                      : "",
+                                });
+                              } else {
+                                onToggle(habit, date, log);
+                              }
+                            }}
                           >
                             {completed ? (
-                              <Check className="size-4" />
+                              isQuantified ? (
+                                <span className="text-[9px] font-bold tabular-nums">
+                                  {log.value}
+                                </span>
+                              ) : (
+                                <Check className="size-4" />
+                              )
                             ) : skipped ? (
                               <Minus className="size-4" />
                             ) : inProgress ? (
                               <span className="text-[9px] font-bold tabular-nums">
                                 {log.value}
                               </span>
+                            ) : isQuantified ? (
+                              <Plus className="size-3" />
                             ) : null}
                           </button>
                         ) : (
@@ -947,9 +1002,122 @@ function HabitMonthGrid({
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/25 px-5 py-3 text-xs text-muted-foreground sm:px-6">
-        <span>Only scheduled days count toward a habit&apos;s consistency score.</span>
+        <span>
+          Quantified habits show their logged value; select a day to edit it.
+          Only scheduled days count toward consistency.
+        </span>
         <span>Scroll horizontally to see every day of the month.</span>
       </div>
+      <Dialog
+        open={editingValue !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingValue(null);
+        }}
+      >
+        <DialogContent className="max-w-sm gap-0">
+          {editingValue && (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                const amount = Number(editingValue.value);
+                if (!editingValue.value.trim() || !Number.isFinite(amount) || amount < 0) {
+                  toast.error("Enter a valid value of zero or more.");
+                  return;
+                }
+                if (
+                  editingValue.habit.type === "count" &&
+                  !Number.isInteger(amount)
+                ) {
+                  toast.error("Count values must be whole numbers.");
+                  return;
+                }
+                onLogValue(
+                  editingValue.habit,
+                  editingValue.date,
+                  amount,
+                  amount === 0
+                    ? null
+                    : amount >= editingValue.habit.targetValue
+                      ? "completed"
+                      : "in_progress"
+                );
+                setEditingValue(null);
+              }}
+            >
+              <DialogHeader className="mb-4">
+                <DialogTitle>
+                  {editingValue.habit.type === "count"
+                    ? "Log count"
+                    : "Log amount"}
+                </DialogTitle>
+                <DialogDescription>
+                  {editingValue.habit.name} ·{" "}
+                  {localDate(editingValue.date).toLocaleDateString(undefined, {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                  {" · Target "}
+                  {editingValue.habit.targetValue}
+                  {editingValue.habit.unit
+                    ? ` ${editingValue.habit.unit}`
+                    : ""}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-2 pb-5">
+                <label
+                  htmlFor="habit-log-value"
+                  className="text-sm font-medium"
+                >
+                  {editingValue.habit.type === "count"
+                    ? "Count"
+                    : `Amount${editingValue.habit.unit ? ` (${editingValue.habit.unit})` : ""}`}
+                </label>
+                <Input
+                  id="habit-log-value"
+                  type="number"
+                  min="0"
+                  step={editingValue.habit.type === "count" ? "1" : "any"}
+                  autoFocus
+                  value={editingValue.value}
+                  onChange={(event) =>
+                    setEditingValue((current) =>
+                      current
+                        ? { ...current, value: event.target.value }
+                        : current
+                    )
+                  }
+                  disabled={editingValueSaving}
+                />
+              </div>
+              <DialogFooter className="border-t pt-4">
+                {editingValueLog && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={editingValueSaving}
+                    onClick={() => {
+                      onLogValue(
+                        editingValue.habit,
+                        editingValue.date,
+                        0,
+                        null
+                      );
+                      setEditingValue(null);
+                    }}
+                  >
+                    Clear log
+                  </Button>
+                )}
+                <Button type="submit" disabled={editingValueSaving}>
+                  Save value
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
@@ -1212,7 +1380,7 @@ export default function HabitsClientPage() {
       id: editing?.id ?? crypto.randomUUID(),
       name: values.name.trim(),
       emoji: values.emoji,
-      notes: values.notes.trim(),
+      notes: values.notes?.trim() || "",
       category: values.category,
       type: values.type,
       frequency: values.frequency,
@@ -1342,10 +1510,9 @@ export default function HabitsClientPage() {
         savingIds={savingIds}
         onToggle={(habit, date, log) => {
           const status = log?.status === "completed" ? null : "completed";
-          const value =
-            habit.type === "count" || habit.type === "measure"
-              ? habit.targetValue
-              : 1;
+          void writeLog(habit, date, 1, status);
+        }}
+        onLogValue={(habit, date, value, status) => {
           void writeLog(habit, date, value, status);
         }}
         onEdit={openEditor}

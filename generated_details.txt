@@ -1,0 +1,44 @@
+Taskflow SEO / app audit generated details
+
+Brand: Taskflow
+Fallback site URL: https://taskflow.app
+
+Route audit
+
+Route                     | Title                                 | Description                                                         | H1                                      | Canonical                          | Schema                                | Status / issues
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/                         | Taskflow | Task and habit planner     | Taskflow helps you plan tasks, build habits, and reflect on progress. | Plan your day. Build better habits.    | https://taskflow.app/              | WebSite + Organization               | Public, indexable, metadata added
+/login                   | Log in                                | Sign in to your Taskflow workspace                                 | Welcome back                           | https://taskflow.app/login         | none                                 | Auth page, noindex, public route but not searchable
+/register                | Create an account                     | Create your Taskflow account                                        | Create your account                    | https://taskflow.app/register      | none                                 | Auth page, noindex
+/forgot-password         | Reset password                        | Recover access to your Taskflow account                             | Forgot your password?                 | https://taskflow.app/forgot-password | none                                 | Auth page, noindex
+/reset-password          | Choose new password                  | Set a new password for your Taskflow account                        | Choose a new password                 | https://taskflow.app/reset-password | none                                 | Auth page, noindex
+/tasks                   | Task dashboard                        | Review and manage daily priorities                                  | not set in UI                         | noindex                             | none                                 | Private app page, noindex
+/calendar                | Calendar                              | Schedule tasks and routines                                          | not set in UI                         | noindex                             | none                                 | Private app page, noindex
+/days                    | Daily view                            | Daily trend and task view                                           | not set in UI                         | noindex                             | none                                 | Private app page, noindex
+/habits                  | Habit tracker                         | Track recurring habits and streaks                                  | not set in UI                         | noindex                             | none                                 | Private app page, noindex
+/friends                 | Friends                               | Social accountability and challenges                                | not set in UI                         | noindex                             | none                                 | Private app page, noindex
+/notifications           | Notifications                         | Review reminders and activity updates                               | not set in UI                         | noindex                             | none                                 | Private app page, noindex
+/profile                 | Profile                               | Personal profile, analytics, settings                                | not set in UI                         | noindex                             | none                                 | Private app page, noindex
+/streak                  | Streaks                              | View progress streaks and consistency                                | not set in UI                         | noindex                             | none                                 | Private app page, noindex
+
+Implemented work
+- Root layout metadataBase + default/title template + OG/Twitter metadata
+- Home page metadata and server wrapper for SEO-friendly landing page
+- App private section marked as noindex via route metadata
+- robots.txt with public pages + AI crawler allowances
+- sitemap.xml with indexable routes only
+- manifest.webmanifest and app icons
+- not-found page with links back to key routes
+- llms.txt and llms-full.txt route outputs
+- dynamic OG and Twitter card image generation
+- security and performance headers in next.config.ts
+- redirect handling for trailing slash normalization and canonical host matching in proxy.ts
+
+Validation
+- npm run lint: passed
+- npm run build: passed
+- Local curl verification: /, /robots.txt, /sitemap.xml, /llms.txt all responded with HTTP 200
+
+Notes
+- The app is a private task dashboard behind authentication, so the authenticated routes remain noindex to avoid indexing private content.
+- The public marketing root remains indexable and the generated SEO metadata is in place.
