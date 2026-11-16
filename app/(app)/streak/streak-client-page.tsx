@@ -46,7 +46,6 @@ import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
 const trendConfig = {
   completed: { label: "Completed", color: "var(--chart-1)" },
-  created: { label: "Created", color: "var(--chart-3)" },
 } satisfies ChartConfig;
 
 function getMonthCalendar(today: string) {
@@ -225,10 +224,9 @@ export default function StreakPage() {
       return {
         day: shortLabel(key),
         completed: completionCountsByDate.get(key) ?? 0,
-        created: allTasks.filter((task) => task.createdAt === key).length,
       };
     });
-  }, [today, completionCountsByDate, allTasks]);
+  }, [today, completionCountsByDate]);
   const currentStreak = activityStreaks.current;
   const longestStreak = activityStreaks.longest;
   const weekStart = today ? new Date(`${today}T12:00:00`) : null;
@@ -444,12 +442,8 @@ export default function StreakPage() {
               <span className="size-2 rounded-full bg-[var(--chart-1)]" />
               Completed
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 border-t-2 border-dashed border-[var(--chart-3)]" />
-              Created
-            </span>
           </div>
-          {activity.length || allTasks.length ? (
+          {activity.length ? (
             <ChartContainer config={trendConfig} className="h-[210px] w-full sm:h-[260px]">
               <LineChart data={completionSeries} margin={{ left: 4, right: 8, top: 8 }}>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -469,14 +463,6 @@ export default function StreakPage() {
                   width={28}
                 />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <Line
-                  type="monotone"
-                  dataKey="created"
-                  stroke="var(--chart-3)"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  dot={false}
-                />
                 <Line
                   type="monotone"
                   dataKey="completed"

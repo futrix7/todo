@@ -434,10 +434,10 @@ export default function FriendsClientPage() {
             variant="outline"
             size="sm"
             nativeButton={false}
-            render={<Link href="/friends/challenges" />}
+            render={<Link href="/habits" />}
           >
             <Trophy />
-            Challenges
+            Habits
           </Button>
           <Button size="sm" onClick={() => setAddFriendsOpen(true)}>
             <UserPlus />

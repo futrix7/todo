@@ -12,7 +12,6 @@ export const CATEGORIES = [
   "Health",
   "Learning",
   "Finance",
-  "Challenge",
 ] as const;
 
 export const DURATIONS = [15, 30, 45, 60, 90, 120, 180] as const;

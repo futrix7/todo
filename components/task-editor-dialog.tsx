@@ -215,7 +215,6 @@ function TaskForm({
                 value={form.title}
                 onChange={(event) => set("title", event.target.value)}
                 autoComplete="off"
-                autoFocus
               />
             </div>
             <div className="flex flex-col gap-1.5">

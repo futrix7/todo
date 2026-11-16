@@ -10,7 +10,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Target,
-  Trophy,
   UsersRound,
 } from "lucide-react";
 
@@ -23,25 +22,10 @@ import {
   type GlobalLeaderboardScore,
   type FriendRequestWithProfile,
 } from "@/lib/supabase/social-data";
-import {
-  loadChallengeCatalog,
-  loadChallengeLeaderboard,
-  loadChallengeSnapshot,
-  type ChallengeLeaderboardParticipant,
-  type ChallengeStats,
-} from "@/lib/supabase/challenge-data";
-import type { ChallengeDefinition } from "@/lib/challenges";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 interface Participant {
   id: string;
@@ -70,11 +54,7 @@ interface PodiumEntry {
   detail: string;
 }
 
-function LeaderboardPodium({
-  entries,
-}: {
-  entries: PodiumEntry[];
-}) {
+function LeaderboardPodium({ entries }: { entries: PodiumEntry[] }) {
   if (!entries.length) return null;
 
   const places = [
@@ -140,7 +120,6 @@ function errorMessage(error: unknown) {
   if (
     message.includes("get_friend_leaderboard_scores") ||
     message.includes("get_global_leaderboard_scores") ||
-    message.includes("get_challenge_leaderboard") ||
     (error &&
       typeof error === "object" &&
       "code" in error &&
@@ -212,9 +191,7 @@ function Metric({
 export default function LeaderboardClientPage() {
   const { user } = useAuth();
   const userId = user?.id;
-  const [scope, setScope] = React.useState<
-    "friends" | "challenge" | "global"
-  >("friends");
+  const [scope, setScope] = React.useState<"friends" | "global">("friends");
   const [friends, setFriends] = React.useState<FriendRequestWithProfile[]>([]);
   const [scores, setScores] = React.useState<FriendLeaderboardScore[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -224,22 +201,6 @@ export default function LeaderboardClientPage() {
   >([]);
   const [globalLoading, setGlobalLoading] = React.useState(false);
   const [globalError, setGlobalError] = React.useState<string | null>(null);
-  const [challenges, setChallenges] = React.useState<ChallengeDefinition[]>([]);
-  const [challengeStats, setChallengeStats] = React.useState<ChallengeStats[]>(
-    []
-  );
-  const [selectedChallengeId, setSelectedChallengeId] = React.useState("");
-  const [challengeParticipants, setChallengeParticipants] = React.useState<
-    ChallengeLeaderboardParticipant[]
-  >([]);
-  const [challengeCatalogLoading, setChallengeCatalogLoading] =
-    React.useState(true);
-  const [challengeBoardLoading, setChallengeBoardLoading] =
-    React.useState(false);
-  const [challengeError, setChallengeError] = React.useState<string | null>(
-    null
-  );
-  const challengeBoardRequestId = React.useRef(0);
 
   const refresh = React.useCallback(async () => {
     if (!userId) return;
@@ -271,55 +232,6 @@ export default function LeaderboardClientPage() {
     }
   }, [userId]);
 
-  const refreshChallengeCatalog = React.useCallback(async () => {
-    if (!userId) return;
-    setChallengeCatalogLoading(true);
-    try {
-      const catalog = await loadChallengeCatalog();
-      const snapshot = await loadChallengeSnapshot(
-        userId,
-        catalog.map((challenge) => challenge.id)
-      );
-      setChallenges(catalog);
-      setChallengeStats(snapshot.stats);
-      setChallengeError(null);
-      if (!catalog.length) {
-        setChallengeParticipants([]);
-        setChallengeBoardLoading(false);
-      }
-      setSelectedChallengeId((current) =>
-        catalog.some((challenge) => challenge.id === current)
-          ? current
-          : (catalog[0]?.id ?? "")
-      );
-    } catch (loadFailure) {
-      setChallengeError(errorMessage(loadFailure));
-    } finally {
-      setChallengeCatalogLoading(false);
-    }
-  }, [userId]);
-
-  const refreshChallengeBoard = React.useCallback(async (challengeId: string) => {
-    if (!challengeId) return;
-    const requestId = ++challengeBoardRequestId.current;
-    setChallengeBoardLoading(true);
-    setChallengeError(null);
-    try {
-      const participants = await loadChallengeLeaderboard(challengeId);
-      if (requestId === challengeBoardRequestId.current) {
-        setChallengeParticipants(participants);
-      }
-    } catch (loadFailure) {
-      if (requestId === challengeBoardRequestId.current) {
-        setChallengeError(errorMessage(loadFailure));
-      }
-    } finally {
-      if (requestId === challengeBoardRequestId.current) {
-        setChallengeBoardLoading(false);
-      }
-    }
-  }, []);
-
   React.useEffect(() => {
     let active = true;
     void Promise.resolve().then(() => {
@@ -340,29 +252,6 @@ export default function LeaderboardClientPage() {
       active = false;
     };
   }, [refreshGlobal, scope, userId]);
-
-  React.useEffect(() => {
-    let active = true;
-    void Promise.resolve().then(() => {
-      if (active) void refreshChallengeCatalog();
-    });
-    return () => {
-      active = false;
-      challengeBoardRequestId.current += 1;
-    };
-  }, [refreshChallengeCatalog]);
-
-  React.useEffect(() => {
-    if (!selectedChallengeId) return;
-    let active = true;
-    void Promise.resolve().then(() => {
-      if (active) void refreshChallengeBoard(selectedChallengeId);
-    });
-    return () => {
-      active = false;
-      challengeBoardRequestId.current += 1;
-    };
-  }, [refreshChallengeBoard, selectedChallengeId]);
 
   const scoreByUserId = new Map(scores.map((score) => [score.user_id, score]));
   const ownScore = userId ? scoreByUserId.get(userId) : undefined;
@@ -430,22 +319,6 @@ export default function LeaderboardClientPage() {
   const activeError = scope === "global" ? globalError : error;
   const displayedOwnScore =
     scope === "global" ? ownGlobalScore : ownScore;
-  const selectedChallenge = challenges.find(
-    (challenge) => challenge.id === selectedChallengeId
-  );
-  const selectedChallengeStats = challengeStats.find(
-    (stats) => stats.challenge_id === selectedChallengeId
-  );
-  const rankedChallengeParticipants = challengeParticipants.map(
-    (participant, index) => ({ ...participant, rank: index + 1 })
-  );
-  const myChallengeRank =
-    rankedChallengeParticipants.find(
-      (participant) => participant.userId === userId
-    )?.rank ?? null;
-  const myChallengeProgress = rankedChallengeParticipants.find(
-    (participant) => participant.userId === userId
-  );
 
   return (
     <div className="-mx-3 -my-4 flex min-h-dvh w-[calc(100%+1.5rem)] min-w-0 flex-col sm:-mx-4 sm:-my-6 sm:w-[calc(100%+2rem)] md:-mx-6 md:-my-8 md:w-[calc(100%+3rem)] lg:-mx-8 lg:-my-6 lg:w-[calc(100%+4rem)]">
@@ -466,7 +339,7 @@ export default function LeaderboardClientPage() {
               Leaderboard
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
-              Compare friends, the Taskflow community, or challenge progress.
+              Compare friends or the Taskflow community.
             </p>
           </div>
         </div>
@@ -484,22 +357,13 @@ export default function LeaderboardClientPage() {
             size="icon"
             aria-label="Refresh leaderboard"
             title="Refresh leaderboard"
-            disabled={
-              scope === "friends"
-                ? loading
-                : scope === "global"
-                  ? globalLoading
-                  : challengeCatalogLoading || challengeBoardLoading
-            }
+            disabled={scope === "friends" ? loading : globalLoading}
             onClick={() => {
               if (scope === "friends") {
                 setLoading(true);
                 void refresh();
-              } else if (scope === "global") {
-                void refreshGlobal();
               } else {
-                void refreshChallengeCatalog();
-                void refreshChallengeBoard(selectedChallengeId);
+                void refreshGlobal();
               }
             }}
           >
@@ -510,7 +374,7 @@ export default function LeaderboardClientPage() {
 
       <section
         aria-label="Leaderboard types"
-        className="grid grid-cols-1 border-b sm:grid-cols-3"
+        className="grid grid-cols-1 border-b sm:grid-cols-2"
       >
         <button
           type="button"
@@ -526,25 +390,6 @@ export default function LeaderboardClientPage() {
             <p className="text-xs text-muted-foreground">Your whole circle</p>
           </div>
           {scope === "friends" && (
-            <Badge className="ml-auto">Selected</Badge>
-          )}
-        </button>
-        <button
-          type="button"
-          aria-pressed={scope === "challenge"}
-          onClick={() => setScope("challenge")}
-          className={`flex min-h-20 items-center gap-3 border-b px-3 py-3 text-left transition-colors hover:bg-muted/40 sm:border-b-0 sm:border-r sm:px-4 md:px-6 lg:px-8 ${
-            scope === "challenge" ? "bg-primary/[0.04]" : ""
-          }`}
-        >
-          <Trophy className="size-5 shrink-0 text-primary" />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold">By challenge</p>
-            <p className="text-xs text-muted-foreground">
-              Choose a community challenge
-            </p>
-          </div>
-          {scope === "challenge" && (
             <Badge className="ml-auto">Selected</Badge>
           )}
         </button>
@@ -622,7 +467,7 @@ export default function LeaderboardClientPage() {
               </p>
             </div>
           </>
-        ) : scope === "global" ? (
+        ) : (
           <>
             <div className="border-b px-3 py-3 sm:border-b-0 sm:border-r sm:px-4 md:px-6 lg:px-8">
               <p className="text-xs text-muted-foreground">
@@ -668,51 +513,9 @@ export default function LeaderboardClientPage() {
               </p>
             </div>
           </>
-        ) : (
-          <>
-            <div className="border-b px-3 py-3 sm:border-b-0 sm:border-r sm:px-4 md:px-6 lg:px-8">
-              <p className="text-xs text-muted-foreground">Your challenge rank</p>
-              <p className="mt-1 font-heading text-3xl font-semibold tabular-nums">
-                {challengeBoardLoading || myChallengeRank === null
-                  ? "—"
-                  : `#${myChallengeRank}`}
-                <span className="ml-1 text-sm font-normal text-muted-foreground">
-                  {challengeParticipants.length
-                    ? `of ${challengeParticipants.length}`
-                    : ""}
-                </span>
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Among members who share their progress.
-              </p>
-            </div>
-            <div className="border-b px-3 py-3 sm:border-b-0 sm:border-r sm:px-4 md:px-6 lg:px-8">
-              <p className="text-xs text-muted-foreground">Your progress</p>
-              <p className="mt-1 font-heading text-3xl font-semibold tabular-nums">
-                {challengeBoardLoading || !myChallengeProgress
-                  ? "—"
-                  : `${myChallengeProgress.completedDays}/${myChallengeProgress.targetDays}`}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Completed challenge days.
-              </p>
-            </div>
-            <div className="px-3 py-3 sm:px-4 md:px-6 lg:px-8">
-              <p className="text-xs text-muted-foreground">Total joined</p>
-              <p className="mt-1 font-heading text-3xl font-semibold tabular-nums">
-                {challengeCatalogLoading
-                  ? "—"
-                  : selectedChallengeStats?.participant_count ?? 0}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Members in this challenge.
-              </p>
-            </div>
-          </>
         )}
       </section>
 
-      {scope !== "challenge" ? (
       <div className="grid min-w-0 flex-1 grid-rows-[auto_1fr] border-t xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)] xl:grid-rows-1">
         <section className="flex min-w-0 flex-col border-b xl:border-b-0 xl:border-r">
           <div className="flex flex-col gap-2 border-b px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4 md:px-6 lg:px-8">
@@ -769,78 +572,78 @@ export default function LeaderboardClientPage() {
               </div>
             ) : activeRankedParticipants.length ? (
               <>
-              <LeaderboardPodium
-                entries={activeRankedParticipants
-                  .filter((participant) => participant.score.score !== null)
-                  .slice(0, 3)
-                  .map((participant) => ({
-                    id: participant.id,
-                    name: participant.name,
-                    score: participant.score.score?.toFixed(1) ?? "—",
-                    detail: "/ 100",
-                  }))}
-              />
-              <ol className="flex flex-col">
-                {activeRankedParticipants.map((participant) => (
-                  <li
-                    key={participant.id}
-                    className="flex min-w-0 items-center gap-3 border-b py-3 last:border-0 sm:gap-4"
-                  >
-                    <Badge
-                      variant={participant.rank === 1 ? "default" : "outline"}
-                      className="min-w-10 shrink-0 justify-center"
-                      aria-label={participant.rank ? `Rank ${participant.rank}` : "Unranked"}
+                <LeaderboardPodium
+                  entries={activeRankedParticipants
+                    .filter((participant) => participant.score.score !== null)
+                    .slice(0, 3)
+                    .map((participant) => ({
+                      id: participant.id,
+                      name: participant.name,
+                      score: participant.score.score?.toFixed(1) ?? "—",
+                      detail: "/ 100",
+                    }))}
+                />
+                <ol className="flex flex-col">
+                  {activeRankedParticipants.map((participant) => (
+                    <li
+                      key={participant.id}
+                      className="flex min-w-0 items-center gap-3 border-b py-3 last:border-0 sm:gap-4"
                     >
-                      {participant.rank ?? "—"}
-                    </Badge>
-                    <Avatar className="size-10 shrink-0 bg-primary/10 text-primary">
-                      <AvatarFallback>
-                        {initials(participant.name) || "U"}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">
-                        {participant.name}
-                        {participant.isYou && (
-                          <span className="ml-2 text-xs font-normal text-muted-foreground">
-                            You
-                          </span>
-                        )}
-                      </p>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
-                        Completion {formatRate(participant.score.completion_rate)}
-                        {" · "}Consistency{" "}
-                        {formatRate(participant.score.consistency_rate)}
-                        {" · "}On-time{" "}
-                        {formatRate(participant.score.on_time_rate)}
-                      </p>
-                      <div
-                        className="mt-2 h-1.5 overflow-hidden bg-muted"
-                        role="progressbar"
-                        aria-label={`${participant.name} leaderboard score`}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={Math.round(participant.score.score ?? 0)}
+                      <Badge
+                        variant={participant.rank === 1 ? "default" : "outline"}
+                        className="min-w-10 shrink-0 justify-center"
+                        aria-label={participant.rank ? `Rank ${participant.rank}` : "Unranked"}
                       >
+                        {participant.rank ?? "—"}
+                      </Badge>
+                      <Avatar className="size-10 shrink-0 bg-primary/10 text-primary">
+                        <AvatarFallback>
+                          {initials(participant.name) || "U"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">
+                          {participant.name}
+                          {participant.isYou && (
+                            <span className="ml-2 text-xs font-normal text-muted-foreground">
+                              You
+                            </span>
+                          )}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          Completion {formatRate(participant.score.completion_rate)}
+                          {" · "}Consistency{" "}
+                          {formatRate(participant.score.consistency_rate)}
+                          {" · "}On-time{" "}
+                          {formatRate(participant.score.on_time_rate)}
+                        </p>
                         <div
-                          className="h-full bg-primary"
-                          style={{
-                            width: `${Math.min(100, Math.max(0, participant.score.score ?? 0))}%`,
-                          }}
-                        />
+                          className="mt-2 h-1.5 overflow-hidden bg-muted"
+                          role="progressbar"
+                          aria-label={`${participant.name} leaderboard score`}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={Math.round(participant.score.score ?? 0)}
+                        >
+                          <div
+                            className="h-full bg-primary"
+                            style={{
+                              width: `${Math.min(100, Math.max(0, participant.score.score ?? 0))}%`,
+                            }}
+                          />
+                        </div>
                       </div>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-lg font-bold tabular-nums">
-                        {participant.score.score === null
-                          ? "—"
-                          : participant.score.score.toFixed(1)}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">/ 100</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
+                      <div className="shrink-0 text-right">
+                        <p className="text-lg font-bold tabular-nums">
+                          {participant.score.score === null
+                            ? "—"
+                            : participant.score.score.toFixed(1)}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">/ 100</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
               </>
             ) : (
               <div className="flex flex-col items-center gap-3 py-8 text-center">
@@ -917,237 +720,6 @@ export default function LeaderboardClientPage() {
           </div>
         </section>
       </div>
-      ) : (
-        <div className="grid min-w-0 flex-1 border-t xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,1fr)]">
-          <section className="flex min-w-0 flex-col border-b xl:border-b-0 xl:border-r">
-            <header className="flex flex-col gap-3 border-b px-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-4 md:px-6 lg:px-8">
-              <div>
-                <h2 className="font-heading text-base font-semibold">
-                  Challenge leaderboard
-                </h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Rank by completed days in a specific challenge.
-                </p>
-              </div>
-              <Select
-                value={selectedChallengeId}
-                onValueChange={(value) => {
-                  if (value) setSelectedChallengeId(value);
-                }}
-                disabled={challengeCatalogLoading || challenges.length === 0}
-              >
-                <SelectTrigger
-                  aria-label="Choose a challenge"
-                  className="w-full sm:w-64"
-                >
-                  <SelectValue
-                    placeholder={
-                      challengeCatalogLoading
-                        ? "Loading challenges…"
-                        : "Choose a challenge"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {challenges.map((challenge) => (
-                    <SelectItem key={challenge.id} value={challenge.id}>
-                      {challenge.name} · {challenge.category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </header>
-
-            <div className="min-w-0 flex-1 px-3 py-4 sm:px-4 md:px-6 lg:px-8">
-              {challengeCatalogLoading || challengeBoardLoading ? (
-                <div
-                  className="flex flex-col gap-3"
-                  role="status"
-                  aria-label="Loading challenge leaderboard"
-                >
-                  <Skeleton className="h-72 w-full rounded-3xl" />
-                  <Skeleton className="h-14 w-full" />
-                  <Skeleton className="h-14 w-full" />
-                  <span className="sr-only">Loading challenge leaderboard</span>
-                </div>
-              ) : challengeError ? (
-                <div className="flex flex-col items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <p role="alert" className="text-sm text-destructive">
-                    {challengeError}
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      void refreshChallengeCatalog();
-                      void refreshChallengeBoard(selectedChallengeId);
-                    }}
-                  >
-                    Try again
-                  </Button>
-                </div>
-              ) : challenges.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed bg-card px-4 py-12 text-center">
-                  <Trophy className="size-8 text-muted-foreground" />
-                  <p className="text-sm font-medium">No active challenges</p>
-                  <p className="text-sm text-muted-foreground">
-                    Join or create a challenge to start a challenge leaderboard.
-                  </p>
-                  <Button
-                    nativeButton={false}
-                    render={<Link href="/friends/challenges" />}
-                  >
-                    Browse challenges
-                  </Button>
-                </div>
-              ) : rankedChallengeParticipants.length > 0 ? (
-                <>
-                  <LeaderboardPodium
-                    entries={rankedChallengeParticipants.slice(0, 3).map(
-                      (participant) => ({
-                        id: participant.userId,
-                        name: participant.displayName,
-                        score: String(participant.completedDays),
-                        detail: `/ ${participant.targetDays} days`,
-                      })
-                    )}
-                  />
-                  <ol className="divide-y rounded-2xl border bg-card px-3 sm:px-4">
-                    {rankedChallengeParticipants.map((participant) => {
-                      const progress = Math.min(
-                        100,
-                        Math.round(
-                          (participant.completedDays / participant.targetDays) *
-                            100
-                        )
-                      );
-                      return (
-                        <li
-                          key={participant.userId}
-                          className="flex min-w-0 items-center gap-3 py-3 sm:gap-4"
-                        >
-                          <Badge
-                            variant={participant.rank === 1 ? "default" : "outline"}
-                            className="min-w-10 shrink-0 justify-center"
-                          >
-                            {participant.rank}
-                          </Badge>
-                          <Avatar className="size-10 shrink-0 bg-primary/10 text-primary">
-                            <AvatarFallback>
-                              {initials(participant.displayName) || "U"}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold">
-                              {participant.displayName}
-                              {participant.userId === userId && (
-                                <span className="ml-2 text-xs font-normal text-muted-foreground">
-                                  You
-                                </span>
-                              )}
-                            </p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              @{participant.username}
-                            </p>
-                            <div
-                              className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"
-                              role="progressbar"
-                              aria-label={`${participant.displayName} challenge progress`}
-                              aria-valuemin={0}
-                              aria-valuemax={100}
-                              aria-valuenow={progress}
-                            >
-                              <div
-                                className="h-full rounded-full bg-primary"
-                                style={{ width: `${progress}%` }}
-                              />
-                            </div>
-                          </div>
-                          <p className="shrink-0 text-right text-sm font-semibold tabular-nums">
-                            {participant.completedDays}
-                            <span className="text-muted-foreground">
-                              /{participant.targetDays}
-                            </span>
-                            <span className="block text-[10px] font-normal text-muted-foreground">
-                              days
-                            </span>
-                          </p>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                  <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                    Members who hide their challenge status are not shown.
-                    Your own progress is always visible to you.
-                  </p>
-                </>
-              ) : (
-                <div className="rounded-2xl border border-dashed bg-card px-4 py-12 text-center">
-                  <p className="text-sm font-medium">
-                    No visible participants yet
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Join this challenge to begin tracking your progress.
-                  </p>
-                  <Button
-                    className="mt-4"
-                    nativeButton={false}
-                    render={<Link href="/friends/challenges" />}
-                  >
-                    Browse challenges
-                  </Button>
-                </div>
-              )}
-            </div>
-          </section>
-
-          <aside className="flex min-w-0 flex-col gap-4 p-4 sm:p-5 md:p-6">
-            <div className="rounded-2xl border bg-card p-4">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                Selected challenge
-              </p>
-              <h3 className="mt-2 font-heading text-lg font-semibold">
-                {selectedChallenge?.name ?? "Choose a challenge"}
-              </h3>
-              {selectedChallenge && (
-                <>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {selectedChallenge.category} · {selectedChallenge.targetDays} days
-                  </p>
-                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                    {selectedChallenge.description}
-                  </p>
-                </>
-              )}
-            </div>
-            <div className="rounded-2xl border bg-card p-4">
-              <div className="flex items-center gap-2">
-                <UsersRound className="size-4 text-primary" />
-                <h3 className="text-sm font-semibold">Challenge members</h3>
-              </div>
-              <p className="mt-2 font-heading text-3xl font-semibold tabular-nums">
-                {challengeCatalogLoading
-                  ? "—"
-                  : selectedChallengeStats?.participant_count ?? 0}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Total members who joined this challenge.
-              </p>
-            </div>
-            <div className="rounded-2xl border bg-muted/30 p-4">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="size-4 text-primary" />
-                <h3 className="text-sm font-semibold">Fair and private</h3>
-              </div>
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                Rankings use completed challenge days. Only members who chose
-                to share their challenge status appear; their tasks and notes
-                remain private.
-              </p>
-            </div>
-          </aside>
-        </div>
-      )}
     </div>
   );
 }

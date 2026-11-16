@@ -77,11 +77,6 @@ const LINKS = [
     title: "Settings",
   },
   {
-    href: "/profile/visibility",
-    icon: Eye,
-    title: "Visibility",
-  },
-  {
     href: "/streak",
     icon: Flame,
     title: "Streaks",

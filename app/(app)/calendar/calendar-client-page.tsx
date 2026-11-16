@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import {
-  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -30,6 +29,11 @@ import { useTodayKey } from "@/lib/use-local-storage";
 import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { PageLoadingSkeleton } from "@/components/page-loading-skeleton";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +47,12 @@ const DAY_FORMAT = new Intl.DateTimeFormat(undefined, {
   month: "long",
   day: "numeric",
 });
+
+const PRIORITY_STYLES: Record<Task["priority"], string> = {
+  high: "border-rose-500/25 bg-rose-500/10 text-rose-600 dark:text-rose-300",
+  medium: "border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-300",
+  low: "border-sky-500/25 bg-sky-500/10 text-sky-600 dark:text-sky-300",
+};
 
 function localDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
@@ -94,6 +104,7 @@ export default function CalendarClientPage() {
   const [savingTaskId, setSavingTaskId] = React.useState<string | null>(null);
   const [addTaskDialogOpen, setAddTaskDialogOpen] = React.useState(false);
   const [savingNewTask, setSavingNewTask] = React.useState(false);
+  const [openDayKey, setOpenDayKey] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!user?.id || !isSupabaseConfigured || schemaUnavailable) {
@@ -142,9 +153,6 @@ export default function CalendarClientPage() {
     }
     return byDate;
   }, [dates, tasks]);
-  const scheduledForDate = activeDate
-    ? tasksByDate.get(activeDate) ?? []
-    : [];
   const isComplete = (task: Task, date: string) =>
     completionKeys.has(`${task.id}:${date}`) ||
     (task.repeat === "none" &&
@@ -152,6 +160,7 @@ export default function CalendarClientPage() {
       (task.lastCompletedOn === date || (!task.lastCompletedOn && task.dueDate === date)));
 
   function moveMonth(amount: number) {
+    setOpenDayKey(null);
     setMonth((current) =>
       new Date(
         (current ?? activeMonth).getFullYear(),
@@ -162,35 +171,43 @@ export default function CalendarClientPage() {
     );
   }
 
-  async function toggleTask(task: Task) {
-    if (!user?.id || !activeDate || savingTaskId) return;
-    const completed = isComplete(task, activeDate);
+  function goToToday() {
+    if (!todayKey) return;
+    setOpenDayKey(null);
+    const today = localDate(todayKey);
+    setMonth(new Date(today.getFullYear(), today.getMonth(), 1, 12));
+    setSelectedDate(todayKey);
+  }
+
+  async function toggleTask(task: Task, date: string) {
+    if (!user?.id || !date || savingTaskId) return;
+    const completed = isComplete(task, date);
     const nextCompleted = !completed;
     const previousCompletions = completions;
     const updatedTask: Task = {
       ...task,
       completed:
-        task.repeat === "none" && (task.dueDate ?? task.createdAt) === activeDate
+        task.repeat === "none" && (task.dueDate ?? task.createdAt) === date
           ? nextCompleted
           : task.completed,
-      lastCompletedOn: nextCompleted ? activeDate : task.lastCompletedOn,
+      lastCompletedOn: nextCompleted ? date : task.lastCompletedOn,
     };
 
     setSavingTaskId(task.id);
     setCompletions((current) =>
       nextCompleted
         ? [
-            ...current,
-            {
-              taskId: task.id,
-              completedOn: activeDate,
-              completedAt: new Date().toISOString(),
-            },
-          ]
+          ...current,
+          {
+            taskId: task.id,
+            completedOn: date,
+            completedAt: new Date().toISOString(),
+          },
+        ]
         : current.filter(
-            (item) =>
-              item.taskId !== task.id || item.completedOn !== activeDate
-          )
+          (item) =>
+            item.taskId !== task.id || item.completedOn !== date
+        )
     );
     if (task.repeat === "none") {
       setTasks((current) =>
@@ -202,11 +219,11 @@ export default function CalendarClientPage() {
       if (nextCompleted) {
         await saveCompletion(user.id, {
           taskId: task.id,
-          completedOn: activeDate,
+          completedOn: date,
           completedAt: new Date().toISOString(),
         });
       } else {
-        await removeCompletion(user.id, task.id, activeDate);
+        await removeCompletion(user.id, task.id, date);
       }
       if (task.repeat === "none") await saveTask(user.id, updatedTask);
     } catch (error) {
@@ -270,37 +287,28 @@ export default function CalendarClientPage() {
     return <PageLoadingSkeleton label="Loading your calendar" variant="calendar" />;
   }
 
-  const selectedDateTasks = scheduledForDate;
   const monthName = MONTH_FORMAT.format(activeMonth);
 
-  return (
-    <section className="flex min-h-[calc(100dvh-5rem)] w-full min-w-0 flex-col bg-background lg:h-full lg:min-h-0">
-      <header className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/70 px-3 pb-3 pt-3 sm:min-h-16 sm:gap-3 sm:px-4 sm:pb-4 sm:pt-4 md:px-5 lg:min-h-16 lg:px-5 lg:pt-4">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight sm:text-2xl">
-            <CalendarDays className="size-5" />
-            Calendar
-          </h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Plan upcoming tasks and review completed days.
-          </p>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-8 shrink-0 px-3 text-xs sm:h-9 sm:px-4 sm:text-sm"
-          onClick={() => {
-            if (!todayKey) return;
-            const today = localDate(todayKey);
-            setMonth(new Date(today.getFullYear(), today.getMonth(), 1, 12));
-            setSelectedDate(todayKey);
-          }}
-        >
-          Today
-        </Button>
-      </header>
+  let monthScheduledCount = 0;
+  let monthCompletedCount = 0;
+  for (const date of dates) {
+    if (
+      date.getMonth() !== activeMonth.getMonth() ||
+      date.getFullYear() !== activeMonth.getFullYear()
+    ) {
+      continue;
+    }
+    const key = dateKey(date);
+    const dayTasks = tasksByDate.get(key) ?? [];
+    monthScheduledCount += dayTasks.length;
+    monthCompletedCount += dayTasks.reduce(
+      (count, task) => count + (isComplete(task, key) ? 1 : 0),
+      0
+    );
+  }
 
+  return (
+    <section className="flex min-h-[calc(100dvh-5rem)] w-full min-w-0 flex-col bg-background lg:h-full lg:min-h-0 lg:overflow-hidden">
       <TaskEditorDialog
         open={addTaskDialogOpen}
         onOpenChange={setAddTaskDialogOpen}
@@ -309,49 +317,83 @@ export default function CalendarClientPage() {
         onSave={addTask}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 px-3 pb-4 pt-3 sm:px-4 sm:pb-5 sm:pt-4 md:px-5 lg:flex-row lg:gap-0 lg:px-5 lg:pb-5 lg:pt-4">
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-card/10">
-          <div className="flex min-h-12 items-center justify-between border-b border-border/70 px-2 sm:min-h-14 sm:px-3">
-            <h2 className="text-sm font-semibold sm:text-base">{monthName}</h2>
-            <div className="flex gap-1">
+      <div className="flex min-h-0 flex-1 flex-col">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 rounded-full px-4 text-sm font-medium"
+              onClick={goToToday}
+            >
+              Today
+            </Button>
+            <div className="flex items-center">
               <Button
                 type="button"
                 size="icon"
                 variant="ghost"
-                className="size-9"
+                className="size-9 rounded-full"
                 aria-label="Previous month"
                 onClick={() => moveMonth(-1)}
               >
-                <ChevronLeft className="size-[18px]" />
+                <ChevronLeft className="size-5" />
               </Button>
               <Button
                 type="button"
                 size="icon"
                 variant="ghost"
-                className="size-9"
+                className="size-9 rounded-full"
                 aria-label="Next month"
                 onClick={() => moveMonth(1)}
               >
-                <ChevronRight className="size-[18px]" />
+                <ChevronRight className="size-5" />
               </Button>
             </div>
+            <div className="min-w-0">
+              <h2 className="truncate font-heading text-xl font-normal sm:text-2xl">
+                {monthName}
+              </h2>
+              <p className="hidden text-xs text-muted-foreground sm:block">
+                {monthScheduledCount} scheduled
+                <span aria-hidden="true"> · </span>
+                {monthCompletedCount} done
+              </p>
+            </div>
           </div>
+          <Button
+            type="button"
+            className="h-9 gap-1.5 rounded-full px-4 text-sm"
+            disabled={!loaded}
+            onClick={() => {
+              setSelectedDate(activeDate);
+              setAddTaskDialogOpen(true);
+            }}
+          >
+            <Plus className="size-4" />
+            Add task
+          </Button>
+        </div>
 
-          <div className="grid grid-cols-7 border-b border-border/70">
+        {/* Calendar */}
+        <div className="flex min-h-0 flex-1 flex-col border-t border-border/70">
+          {/* Weekday labels */}
+          <div className="grid grid-cols-7">
             {WEEKDAYS.map((day) => (
               <div
                 key={day}
-                className="py-2 text-center text-[10px] font-medium text-muted-foreground sm:text-xs"
+                className="py-2 text-center text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
               >
                 <span className="sm:hidden">{day.slice(0, 1)}</span>
-                <span className="hidden sm:inline">{day}</span>
+                <span className="hidden sm:inline">{day.slice(0, 3)}</span>
               </div>
             ))}
           </div>
 
+          {/* Days */}
           <div
-            className="grid min-h-0 flex-1 grid-cols-7 lg:[grid-template-rows:repeat(var(--week-count),minmax(0,1fr))]"
+            className="grid min-h-0 flex-1 grid-cols-7 overflow-y-auto border-l border-border/60 [grid-template-rows:repeat(var(--week-count),minmax(5.5rem,1fr))] lg:[grid-template-rows:repeat(var(--week-count),minmax(7.5rem,1fr))]"
             style={
               {
                 "--week-count": Math.max(1, dates.length / 7),
@@ -366,167 +408,218 @@ export default function CalendarClientPage() {
                 0
               );
               const isCurrentMonth = date.getMonth() === activeMonth.getMonth();
+              const isToday = todayKey === key;
+              const isSelected = activeDate === key;
+              const label =
+                date.getDate() === 1
+                  ? `${date.toLocaleString("en", { month: "short" })} 1`
+                  : date.getDate();
+
               return (
-                <button
+                <Popover
                   key={key}
-                  type="button"
-                  aria-label={`${DAY_FORMAT.format(date)}, ${dayTasks.length} tasks`}
-                  aria-pressed={activeDate === key}
-                  onClick={() => {
-                    setSelectedDate(key);
-                    if (date.getMonth() !== activeMonth.getMonth()) {
-                      setMonth(new Date(date.getFullYear(), date.getMonth(), 1, 12));
-                    }
-                  }}
-                  className={cn(
-                    "group flex min-h-[52px] min-w-0 flex-col items-stretch border-b border-r border-border/60 px-1.5 py-1.5 text-left text-xs transition-colors hover:bg-muted/60 sm:min-h-[76px] sm:p-2 sm:text-sm lg:min-h-0 lg:overflow-hidden",
-                    !isCurrentMonth && "bg-muted/20 text-muted-foreground/60",
-                    activeDate === key && "bg-primary/[0.04]",
-                    todayKey === key && "font-semibold"
-                  )}
+                  open={openDayKey === key}
+                  onOpenChange={(open) =>
+                    setOpenDayKey((current) =>
+                      open ? key : current === key ? null : current
+                    )
+                  }
                 >
-                  <div className="flex w-full min-w-0 items-center justify-between gap-1">
-                    <span
-                      className={cn(
-                        "flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-medium tabular-nums sm:size-7 sm:text-xs",
-                        todayKey === key &&
-                          "bg-primary font-semibold text-primary-foreground"
-                      )}
-                    >
-                      {date.getDate()}
-                    </span>
-                    {dayTasks.length > 0 && (
-                      <span className="hidden shrink-0 text-[10px] tabular-nums text-muted-foreground lg:block">
-                        {completedCount}/{dayTasks.length}
-                      </span>
+                  <PopoverTrigger
+                    type="button"
+                    aria-label={`${DAY_FORMAT.format(date)}, ${dayTasks.length} tasks`}
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      setSelectedDate(key);
+                      if (
+                        date.getMonth() !== activeMonth.getMonth() ||
+                        date.getFullYear() !== activeMonth.getFullYear()
+                      ) {
+                        setMonth(
+                          new Date(date.getFullYear(), date.getMonth(), 1, 12)
+                        );
+                      }
+                    }}
+                    className={cn(
+                      "group relative flex min-h-0 min-w-0 flex-col items-stretch gap-1 overflow-hidden border-b border-r border-border/60 p-1 text-left transition-colors hover:bg-muted/40 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:p-1.5",
+                      !isCurrentMonth && "text-muted-foreground/50",
+                      isSelected && !isToday && "bg-primary/[0.04]"
                     )}
-                  </div>
-                  <div className="mt-0.5 hidden min-h-0 flex-1 flex-col gap-0.5 overflow-hidden lg:flex">
-                    {dayTasks.slice(0, 3).map((task) => (
+                  >
+                    {/* Date number */}
+                    <span className="flex shrink-0 justify-center">
                       <span
-                        key={task.id}
-                        title={task.title}
                         className={cn(
-                          "truncate rounded px-1 text-[11px] leading-[1.1rem]",
-                          isComplete(task, key)
-                            ? "bg-muted text-muted-foreground line-through"
-                            : "bg-primary/10 text-foreground group-hover:bg-primary/15"
+                          "flex h-7 min-w-7 items-center justify-center rounded-full px-1.5 text-xs font-medium tabular-nums sm:h-8 sm:min-w-8 sm:text-sm",
+                          isToday &&
+                          "bg-primary font-semibold text-primary-foreground",
+                          isSelected &&
+                          !isToday &&
+                          "bg-primary/10 text-primary"
                         )}
                       >
-                        {task.startTime ? `${task.startTime} ` : ""}
-                        {task.title}
+                        {label}
                       </span>
-                    ))}
-                    {dayTasks.length > 3 && (
-                      <span className="truncate px-1 text-[10px] text-muted-foreground">
-                        +{dayTasks.length - 3} more
-                      </span>
-                    )}
-                  </div>
-                  {dayTasks.length > 0 && (
-                    <span
-                      className="mt-auto flex flex-wrap gap-0.5 lg:hidden"
-                      aria-hidden="true"
-                    >
-                      {dayTasks.slice(0, 3).map((task) => (
-                        <span
-                          key={task.id}
-                          className={cn(
-                            "size-1 rounded-full bg-muted-foreground/50",
-                            isComplete(task, key) && "bg-primary"
-                          )}
-                        />
-                      ))}
                     </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          </div>
-        </section>
 
-        <aside
-          className={cn(
-            "flex min-h-56 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-card/40 lg:h-full lg:min-h-0 lg:w-80 lg:rounded-none lg:border-y-0 lg:border-l lg:border-r-0 xl:w-96",
-            !selectedDate && "hidden lg:flex"
-          )}
-          aria-label="Selected day"
-        >
-        <div className="flex min-h-14 items-center justify-between border-b px-3 sm:px-4">
-          <div>
-            <h2 className="text-sm font-semibold sm:text-base">
-              {activeDate ? DAY_FORMAT.format(localDate(activeDate)) : "Selected day"}
-            </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {selectedDateTasks.length} scheduled{" "}
-              {selectedDateTasks.length === 1 ? "task" : "tasks"}
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              aria-label="Add task"
-              disabled={!loaded || !activeDate}
-              onClick={() => setAddTaskDialogOpen(true)}
-            >
-              <Plus />
-            </Button>
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        {selectedDateTasks.length ? (
-          <ul className="divide-y">
-            {selectedDateTasks.map((task) => {
-              const completed = isComplete(task, activeDate);
-              return (
-                <li key={task.id} className="flex items-start gap-3 px-3 py-3 sm:px-5 sm:py-4">
-                  <Checkbox
-                    checked={completed}
-                    disabled={savingTaskId === task.id}
-                    onCheckedChange={() => void toggleTask(task)}
-                    aria-label={`${completed ? "Uncomplete" : "Complete"} ${task.title}`}
-                    className="mt-0.5"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className={cn("text-sm font-medium", completed && "text-muted-foreground line-through")}>
-                      {task.title}
-                    </p>
-                    {task.notes && (
-                      <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-                        {task.notes}
-                      </p>
-                    )}
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      <span className="capitalize">{task.priority} priority</span>
-                      {task.repeat !== "none" && (
-                        <span className="capitalize">{task.repeat}</span>
+                    {/* Desktop: event chips */}
+                    <span className="hidden min-h-0 flex-1 flex-col gap-0.5 overflow-hidden md:flex">
+                      {dayTasks.slice(0, 3).map((task) => {
+                        const done = isComplete(task, key);
+                        return (
+                          <span
+                            key={task.id}
+                            title={task.title}
+                            className={cn(
+                              "flex shrink-0 items-center gap-1.5 overflow-hidden rounded px-1.5 py-0.5 text-xs leading-5 transition-colors",
+                              done
+                                ? "bg-muted/50 text-muted-foreground line-through"
+                                : "bg-primary/10 text-foreground group-hover:bg-primary/15 dark:bg-primary/20 dark:group-hover:bg-primary/25"
+                            )}
+                          >
+                            {task.startTime && !done && (
+                              <span className="shrink-0 tabular-nums text-muted-foreground">
+                                {task.startTime}
+                              </span>
+                            )}
+                            <span className="min-w-0 truncate font-medium">{task.title}</span>
+                          </span>
+                        );
+                      })}
+                      {dayTasks.length > 3 && (
+                        <span className="px-1.5 text-xs font-medium text-muted-foreground">
+                          {dayTasks.length - 3} more
+                        </span>
                       )}
-                    </div>
-                  </div>
-                  {task.startTime && (
-                    <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                      <Clock3 className="size-3.5" />
-                      {task.startTime}
-                      {task.duration ? ` · ${task.duration}m` : ""}
                     </span>
-                  )}
-                </li>
+
+                    {/* Mobile: dots */}
+                    {dayTasks.length > 0 && (
+                      <span
+                        className="mt-auto flex shrink-0 justify-center gap-1 pb-1 md:hidden"
+                        aria-hidden="true"
+                      >
+                        {dayTasks.slice(0, 3).map((task) => (
+                          <span
+                            key={task.id}
+                            className={cn(
+                              "size-1.5 rounded-full",
+                              isComplete(task, key)
+                                ? "bg-muted-foreground/40"
+                                : "bg-primary"
+                            )}
+                          />
+                        ))}
+                      </span>
+                    )}
+                  </PopoverTrigger>
+
+                  <PopoverContent
+                    side="bottom"
+                    align="center"
+                    sideOffset={6}
+                    className="w-[min(24rem,calc(100vw-1rem))] gap-0 overflow-hidden rounded-xl border border-border/70 bg-popover p-0 shadow-xl"
+                  >
+                    <div className="flex items-start justify-between gap-3 border-b border-border/70 px-4 py-3">
+                      <div className="min-w-0">
+                        <h3 className="truncate text-sm font-semibold">
+                          {DAY_FORMAT.format(date)}
+                        </h3>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {completedCount} of {dayTasks.length}{" "}
+                          {dayTasks.length === 1 ? "task" : "tasks"} done
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 shrink-0 gap-1 rounded-full px-3 text-xs"
+                        disabled={!loaded}
+                        onClick={() => {
+                          setOpenDayKey(null);
+                          setSelectedDate(key);
+                          setAddTaskDialogOpen(true);
+                        }}
+                      >
+                        <Plus className="size-3.5" />
+                        Add
+                      </Button>
+                    </div>
+
+                    {dayTasks.length > 0 ? (
+                      <ul className="max-h-[min(60dvh,24rem)] overflow-y-auto overscroll-contain">
+                        {dayTasks.map((task) => {
+                          const completed = isComplete(task, key);
+                          return (
+                            <li
+                              key={task.id}
+                              className="flex items-start gap-3 border-b border-border/60 px-4 py-3 last:border-b-0"
+                            >
+                              <Checkbox
+                                checked={completed}
+                                disabled={savingTaskId === task.id}
+                                onCheckedChange={() => void toggleTask(task, key)}
+                                aria-label={`${completed ? "Uncomplete" : "Complete"} ${task.title}`}
+                                className="mt-0.5"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-2">
+                                  <p
+                                    className={cn(
+                                      "text-sm font-medium leading-5",
+                                      completed &&
+                                      "text-muted-foreground line-through"
+                                    )}
+                                  >
+                                    {task.title}
+                                  </p>
+                                  {task.startTime && (
+                                    <span className="flex shrink-0 items-center gap-1 text-xs tabular-nums text-muted-foreground">
+                                      <Clock3 className="size-3" />
+                                      {task.startTime}
+                                      {task.duration ? ` · ${task.duration}m` : ""}
+                                    </span>
+                                  )}
+                                </div>
+                                {task.notes && (
+                                  <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                                    {task.notes}
+                                  </p>
+                                )}
+                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                                  <span
+                                    className={cn(
+                                      "rounded-full border px-2 py-0.5 font-medium capitalize",
+                                      PRIORITY_STYLES[task.priority]
+                                    )}
+                                  >
+                                    {task.priority}
+                                  </span>
+                                  {task.repeat !== "none" && (
+                                    <span className="rounded-full border border-border bg-muted px-2 py-0.5 capitalize text-muted-foreground">
+                                      {task.repeat}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+                        <ListTodo className="size-5 text-muted-foreground/60" />
+                        <p className="text-sm text-muted-foreground">
+                          Nothing planned for this day.
+                        </p>
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
               );
             })}
-          </ul>
-        ) : (
-          <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
-            <ListTodo className="size-7 text-muted-foreground/60" />
-            <p className="text-sm text-muted-foreground">
-              {loaded ? "No tasks scheduled for this day." : "Loading tasks…"}
-            </p>
           </div>
-        )}
         </div>
-        </aside>
       </div>
     </section>
   );

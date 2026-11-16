@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CalendarDays,
+  ChevronDown,
   ChevronUp,
   Clock,
   FolderPlus,
@@ -58,6 +60,15 @@ import {
 import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
 import { PageLoadingSkeleton } from "@/components/page-loading-skeleton";
 import { TaskEditorDialog, taskFromForm, type TaskFormValues } from "@/components/task-editor-dialog";
+import { isHabitScheduledOn } from "@/lib/habit-analytics";
+import type { Habit, HabitLog } from "@/lib/habits";
+import {
+  isMissingHabitDataSchemaError,
+  loadHabitLogs,
+  loadHabits,
+  removeHabitLog,
+  saveHabitLog,
+} from "@/lib/supabase/habit-data";
 
 
 type Filter = "all" | "active" | "done";
@@ -68,6 +79,17 @@ function scheduleLabel(task: Task) {
   if (!task.startTime) return task.endTime ? `by ${task.endTime}` : null;
   if (task.endTime) return `${task.startTime} – ${task.endTime}`;
   return task.duration ? `${task.startTime} · ${task.duration}m` : task.startTime;
+}
+
+function habitScheduleLabel(habit: Habit) {
+  if (habit.frequency === "daily") return "Every day";
+  if (habit.frequency === "weekdays") return "Weekdays";
+  if (habit.frequency === "monthly") return "Monthly";
+  const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return (
+    habit.scheduleDays.map((day) => names[day]).filter(Boolean).join(" · ") ||
+    "Custom schedule"
+  );
 }
 
 function overdueLabel(task: Task, todayKey: string, now: number) {
@@ -92,6 +114,7 @@ const TaskItem = React.memo(function TaskItem({
   onSelect,
   selected,
   index,
+  animate,
   now,
   todayKey,
 }: {
@@ -102,12 +125,12 @@ const TaskItem = React.memo(function TaskItem({
   onSelect: (task: Task) => void;
   selected: boolean;
   index: number;
+  animate: boolean;
   now: number;
   todayKey: string;
 }) {
   const schedule = scheduleLabel(task);
   const overdue = overdueLabel(task, todayKey, now);
-  const isChallenge = task.category === "Challenge";
   const priorityClass =
     task.priority === "high"
       ? "border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300"
@@ -117,11 +140,15 @@ const TaskItem = React.memo(function TaskItem({
 
   return (
     <motion.li
-      layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, x: -24, transition: { duration: 0.2 } }}
-      transition={{ duration: 0.35, delay: Math.min(index * 0.03, 0.24), ease: EASE }}
+      layout={animate ? "position" : false}
+      initial={animate ? { opacity: 0, y: 6 } : false}
+      animate={animate ? { opacity: 1, y: 0 } : undefined}
+      exit={animate ? { opacity: 0, x: -12 } : undefined}
+      transition={{
+        duration: 0.2,
+        delay: animate ? Math.min(index * 0.008, 0.08) : 0,
+        ease: EASE,
+      }}
       className="group"
     >
       <div
@@ -155,11 +182,6 @@ const TaskItem = React.memo(function TaskItem({
             )}
           >
             <span>{task.title}</span>
-            {isChallenge && (
-              <span className="inline-flex shrink-0 items-center rounded-full border border-yellow-500/30 bg-yellow-400/15 px-2 py-0.5 text-[10px] font-semibold leading-none text-yellow-800 dark:text-yellow-300">
-                Challenge
-              </span>
-            )}
           </button>
           {task.notes && (
             <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground sm:line-clamp-2">
@@ -167,11 +189,9 @@ const TaskItem = React.memo(function TaskItem({
             </p>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-            {!isChallenge && (
-              <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-muted-foreground">
-                {task.category}
-              </span>
-            )}
+            <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-muted-foreground">
+              {task.category}
+            </span>
             {priorityClass && (
               <span
                 className={cn(
@@ -403,7 +423,7 @@ function TaskDetails({
               <div className="flex items-center justify-between gap-3 py-3 text-sm">
                 <dt className="text-muted-foreground">List</dt>
                 <dd className="max-w-40 truncate font-medium">
-                  {task.category === "Challenge" ? "Challenges" : task.category}
+                  {task.category}
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-3 py-3 text-sm">
@@ -538,7 +558,17 @@ export default function TasksClientPage() {
     return () => window.clearInterval(interval);
   }, []);
   const [loadedUserId, setLoadedUserId] = React.useState<string | null>(null);
+  const [habits, setHabits] = React.useState<Habit[]>([]);
+  const [habitLogs, setHabitLogs] = React.useState<HabitLog[]>([]);
+  const [habitSavingIds, setHabitSavingIds] = React.useState<Set<string>>(
+    new Set()
+  );
+  const habitsRef = React.useRef<HTMLDivElement>(null);
+  const taskListScrollRef = React.useRef<HTMLDivElement>(null);
+  const [habitsInView, setHabitsInView] = React.useState(false);
+  const pendingHabitToggleIds = React.useRef<Set<string>>(new Set());
   const [filter, setFilter] = React.useState<Filter>("all");
+  const [isFilterPending, startFilterTransition] = React.useTransition();
   const [selectedGroupId, setSelectedGroupId] = React.useState("all");
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Task | null>(null);
@@ -593,13 +623,14 @@ export default function TasksClientPage() {
   React.useEffect(() => {
     function syncGroupFromHash() {
       const groupId = new URLSearchParams(window.location.hash.slice(1)).get("group");
-      setSelectedGroupId(groupId ?? "all");
+      startFilterTransition(() => setSelectedGroupId(groupId ?? "all"));
+      setTaskListLimit(100);
     }
 
     function handleGroupSelection(event: Event) {
       if (!(event instanceof CustomEvent)) return;
       if (typeof event.detail !== "string") return;
-      setSelectedGroupId(event.detail);
+      startFilterTransition(() => setSelectedGroupId(event.detail));
       setTaskListLimit(100);
     }
 
@@ -624,7 +655,8 @@ export default function TasksClientPage() {
           a.name.localeCompare(b.name)
         )
       );
-      setSelectedGroupId(group.id);
+      startFilterTransition(() => setSelectedGroupId(group.id));
+      setTaskListLimit(100);
     }
 
     window.addEventListener("task-group-created", handleGroupCreated);
@@ -669,7 +701,6 @@ export default function TasksClientPage() {
         setSelectedGroupId((current) =>
           current === "all" ||
           current === "ungrouped" ||
-          current === "challenges" ||
           remoteGroups.some((group) => group.id === current)
             ? current
             : "all"
@@ -687,6 +718,28 @@ export default function TasksClientPage() {
     };
   }, [user?.id, reportError, schemaUnavailable]);
 
+  React.useEffect(() => {
+    if (!isSupabaseConfigured || !user?.id || !todayKey) return;
+    if (schemaUnavailable || isTaskDataSchemaUnavailable()) return;
+
+    const userId = user.id;
+    let active = true;
+    Promise.all([loadHabits(userId), loadHabitLogs(userId, todayKey)])
+      .then(([remoteHabits, remoteLogs]) => {
+        if (!active) return;
+        setHabits(remoteHabits);
+        setHabitLogs(remoteLogs);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        if (!isMissingHabitDataSchemaError(error)) reportError(error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [reportError, schemaUnavailable, todayKey, user?.id]);
+
   const completionsByTask = React.useMemo(() => {
     const indexed = new Map<string, TaskCompletion[]>();
     for (const completion of completions) {
@@ -703,6 +756,34 @@ export default function TasksClientPage() {
     }
     return completed;
   }, [completions, todayKey]);
+  const todaysHabits = React.useMemo(
+    () =>
+      habits
+        .filter(
+          (habit) =>
+            !habit.archived &&
+            Boolean(todayKey) &&
+            isHabitScheduledOn(habit, todayKey)
+        )
+        .sort((a, b) => {
+          const aTime = a.startTime ?? "99:99";
+          const bTime = b.startTime ?? "99:99";
+          return aTime.localeCompare(bTime) || a.name.localeCompare(b.name);
+        }),
+    [habits, todayKey]
+  );
+  const habitLogTodayByHabit = React.useMemo(
+    () =>
+      new Map(
+        habitLogs
+          .filter((log) => log.completedOn === todayKey)
+          .map((log) => [log.habitId, log])
+      ),
+    [habitLogs, todayKey]
+  );
+  const completedHabitCount = todaysHabits.filter(
+    (habit) => habitLogTodayByHabit.get(habit.id)?.status === "completed"
+  ).length;
   const dailyTasks = React.useMemo(
     () =>
       tasks.map((task) => {
@@ -726,7 +807,7 @@ export default function TasksClientPage() {
   const expiredCompletedTaskIds = React.useMemo(() => {
     const expired = new Set<string>();
     for (const task of dailyTasks) {
-      if (!task.completed || task.category === "Challenge") continue;
+      if (!task.completed) continue;
       const history = completionsByTask.get(task.id) ?? [];
       const latestCompletion = history.reduce<TaskCompletion | undefined>(
         (latest, completion) => {
@@ -785,14 +866,11 @@ export default function TasksClientPage() {
           continue;
         }
 
-        const isChallenge = task.category === "Challenge";
         const matchesGroup =
           selectedGroupId === "all" ||
-          (selectedGroupId === "challenges"
-            ? isChallenge
-            : selectedGroupId === "ungrouped"
-              ? !task.groupId && !isChallenge
-              : task.groupId === selectedGroupId);
+          (selectedGroupId === "ungrouped"
+            ? !task.groupId
+            : task.groupId === selectedGroupId);
         if (!matchesGroup) continue;
 
         groupedTaskCount++;
@@ -833,14 +911,11 @@ export default function TasksClientPage() {
         ) {
           return false;
         }
-        const isChallenge = task.category === "Challenge";
         return (
           selectedGroupId === "all" ||
-          (selectedGroupId === "challenges"
-            ? isChallenge
-            : selectedGroupId === "ungrouped"
-              ? !task.groupId && !isChallenge
-              : task.groupId === selectedGroupId)
+          (selectedGroupId === "ungrouped"
+            ? !task.groupId
+            : task.groupId === selectedGroupId)
         );
       }),
     [
@@ -862,16 +937,86 @@ export default function TasksClientPage() {
       ? "All tasks"
       : selectedGroupId === "ungrouped"
         ? "Ungrouped tasks"
-        : selectedGroupId === "challenges"
-          ? "Challenge tasks"
-          : taskGroups.find((group) => group.id === selectedGroupId)?.name ??
-            "All tasks";
+        : taskGroups.find((group) => group.id === selectedGroupId)?.name ??
+          "All tasks";
   const selectedGroup = taskGroups.find((group) => group.id === selectedGroupId);
 
   const handleCreate = React.useCallback(() => {
     setEditing(null);
     setDialogOpen(true);
   }, []);
+
+  const handleScrollToHabits = React.useCallback(() => {
+    const container = taskListScrollRef.current;
+    const target = habitsRef.current;
+    if (!target) return;
+
+    if (container && container.scrollHeight > container.clientHeight + 1) {
+      const top =
+        target.getBoundingClientRect().top -
+        container.getBoundingClientRect().top +
+        container.scrollTop -
+        8;
+      container.scrollTo({ top, behavior: "smooth" });
+      return;
+    }
+
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  React.useEffect(() => {
+    const target = habitsRef.current;
+    if (!target || todaysHabits.length === 0) {
+      setHabitsInView(false);
+      return;
+    }
+
+    let frame = 0;
+    const updateVisibility = () => {
+      frame = 0;
+      const rect = target.getBoundingClientRect();
+      const container = taskListScrollRef.current;
+      const overflowY = container
+        ? window.getComputedStyle(container).overflowY
+        : "visible";
+      const containerRect =
+        container && (overflowY === "auto" || overflowY === "scroll")
+          ? container.getBoundingClientRect()
+          : null;
+      const viewportTop = Math.max(0, containerRect?.top ?? 0);
+      const viewportBottom = Math.min(
+        window.innerHeight - (window.innerWidth < 768 ? 80 : 0),
+        containerRect?.bottom ?? window.innerHeight
+      );
+      const visibleHeight = Math.max(
+        0,
+        Math.min(rect.bottom, viewportBottom) - Math.max(rect.top, viewportTop)
+      );
+      const visible = visibleHeight >= Math.min(96, Math.max(rect.height, 1));
+      setHabitsInView((current) => (current === visible ? current : visible));
+    };
+    const scheduleUpdate = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(updateVisibility);
+    };
+
+    const container = taskListScrollRef.current;
+    const resizeObserver = new ResizeObserver(scheduleUpdate);
+    resizeObserver.observe(target);
+    if (container) resizeObserver.observe(container);
+    scheduleUpdate();
+    window.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
+    container?.addEventListener("scroll", scheduleUpdate, { passive: true });
+
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+      window.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+      container?.removeEventListener("scroll", scheduleUpdate);
+    };
+  }, [todaysHabits.length, displayedTasks.length]);
 
   React.useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
@@ -1072,6 +1217,76 @@ export default function TasksClientPage() {
     user,
   ]);
 
+  const handleToggleHabit = React.useCallback(
+    async (habit: Habit) => {
+      if (!user?.id || !todayKey) return;
+      if (!isSupabaseConfigured) {
+        reportConfigurationError();
+        return;
+      }
+      if (pendingHabitToggleIds.current.has(habit.id)) return;
+
+      const currentLog = habitLogs.find(
+        (log) => log.habitId === habit.id && log.completedOn === todayKey
+      );
+      const wasComplete = currentLog?.status === "completed";
+      const value =
+        habit.type === "count" || habit.type === "measure"
+          ? habit.targetValue
+          : 1;
+      const previousLogs = habitLogs;
+
+      pendingHabitToggleIds.current.add(habit.id);
+      setHabitSavingIds((current) => new Set(current).add(habit.id));
+      setHabitLogs((current) =>
+        wasComplete
+          ? current.filter(
+              (log) =>
+                !(log.habitId === habit.id && log.completedOn === todayKey)
+            )
+          : [
+              ...current.filter(
+                (log) =>
+                  !(log.habitId === habit.id && log.completedOn === todayKey)
+              ),
+              {
+                habitId: habit.id,
+                completedOn: todayKey,
+                value,
+                status: "completed",
+                loggedAt: new Date().toISOString(),
+              },
+            ]
+      );
+
+      try {
+        if (wasComplete) {
+          await removeHabitLog(user.id, habit.id, todayKey);
+        } else {
+          await saveHabitLog(user.id, habit.id, todayKey, value, "completed");
+          toast.success(`“${habit.name}” done for today.`);
+        }
+      } catch (error) {
+        setHabitLogs(previousLogs);
+        if (isMissingHabitDataSchemaError(error)) {
+          toast.error(
+            "Habit data is unavailable. Run supabase/schema.sql to create the habit tables."
+          );
+        } else {
+          reportError(error);
+        }
+      } finally {
+        pendingHabitToggleIds.current.delete(habit.id);
+        setHabitSavingIds((current) => {
+          const next = new Set(current);
+          next.delete(habit.id);
+          return next;
+        });
+      }
+    },
+    [habitLogs, reportConfigurationError, reportError, todayKey, user]
+  );
+
   const handleDelete = React.useCallback(async (task: Task) => {
     if (isTaskDataSchemaUnavailable()) {
       reportSchemaUnavailable();
@@ -1176,9 +1391,9 @@ export default function TasksClientPage() {
   return (
     <div
       ref={listDetailsRef}
-      className="flex h-full min-h-0 w-full min-w-0 flex-col items-stretch gap-4 lg:flex-row lg:gap-0"
+      className="flex w-full min-w-0 flex-col items-stretch gap-4 lg:h-full lg:min-h-0 lg:flex-row lg:gap-0"
     >
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden px-1 pt-0 pb-2 sm:px-2 sm:gap-4 lg:gap-6 lg:py-4 lg:pl-2 lg:pr-5">
+      <section className="flex min-w-0 flex-1 flex-col gap-2 px-1 pt-0 pb-2 sm:px-2 sm:gap-4 lg:min-h-0 lg:gap-6 lg:overflow-hidden lg:py-4 lg:pl-2 lg:pr-5">
       {/* Header + progress */}
       <FadeIn delay={0.06} className="flex flex-col gap-2 sm:gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1210,7 +1425,10 @@ export default function TasksClientPage() {
           <Input
             type="search"
             value={taskSearch}
-            onChange={(event) => setTaskSearch(event.target.value)}
+            onChange={(event) => {
+              setTaskSearch(event.target.value);
+              setTaskListLimit(100);
+            }}
             placeholder="Search tasks"
             aria-label="Search tasks by title or notes"
             className="h-9 pl-9"
@@ -1220,19 +1438,34 @@ export default function TasksClientPage() {
         value={progress}
         className="[&_[data-slot=progress-track]]:h-1.5 lg:[&_[data-slot=progress-track]]:h-3"
         />
-        <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
+        <Tabs
+          value={filter}
+          onValueChange={(value) => {
+            setTaskListLimit(100);
+            startFilterTransition(() => setFilter(value as Filter));
+          }}
+        >
         <TabsList variant="default" className="grid h-8 w-full grid-cols-3 rounded-xl lg:h-10">
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="active">Active</TabsTrigger>
             <TabsTrigger value="done">Done</TabsTrigger>
           </TabsList>
         </Tabs>
+        <p className="text-right text-xs text-muted-foreground" aria-live="polite">
+          {visible.length} {visible.length === 1 ? "match" : "matches"}
+        </p>
       </FadeIn>
 
       {/* Task list */}
       <div
-        className="min-h-0 min-w-0 flex-1 overflow-y-auto lg:pr-1"
+        ref={taskListScrollRef}
+        className={cn(
+          "min-w-0 pb-2 transition-opacity duration-150 ease-out lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1",
+          (isFilterPending || deferredTaskSearch !== taskSearch) &&
+            "opacity-60"
+        )}
         data-resizing={resizingDetails || undefined}
+        aria-busy={isFilterPending || deferredTaskSearch !== taskSearch}
       >
       <FadeIn delay={0.12} className="min-w-0">
         {visible.length === 0 ? (
@@ -1257,22 +1490,53 @@ export default function TasksClientPage() {
           <div className="flex flex-col gap-6">
             {displayedTasks.length > 0 && (
               <ul className="flex min-w-0 flex-col gap-2">
-                <AnimatePresence mode="popLayout">
-                  {displayedTasks.map((task, i) => (
+                {displayedTasks.length <= 30 ? (
+                  <AnimatePresence mode="popLayout">
+                    {displayedTasks.map((task, i) => (
+                      <TaskItem
+                        key={task.id}
+                        task={task}
+                        index={i}
+                        animate
+                        selected={selectedTask?.id === task.id}
+                        now={
+                          task.endTime &&
+                          !task.completed &&
+                          (task.dueDate ?? todayKey) === todayKey
+                            ? now
+                            : 0
+                        }
+                        todayKey={todayKey}
+                        onToggle={handleToggle}
+                        onSelect={handleSelectTask}
+                        onEdit={handleEditTask}
+                        onDelete={handleRequestDelete}
+                      />
+                    ))}
+                  </AnimatePresence>
+                ) : (
+                  displayedTasks.map((task) => (
                     <TaskItem
                       key={task.id}
                       task={task}
-                      index={i}
+                      index={0}
+                      animate={false}
                       selected={selectedTask?.id === task.id}
-                      now={now}
+                      now={
+                        task.endTime &&
+                        !task.completed &&
+                        (task.dueDate ?? todayKey) === todayKey
+                          ? now
+                          : 0
+                      }
                       todayKey={todayKey}
                       onToggle={handleToggle}
                       onSelect={handleSelectTask}
                       onEdit={handleEditTask}
                       onDelete={handleRequestDelete}
                     />
-                  ))}
-                </AnimatePresence>
+                  ))
+                )}
               </ul>
             )}
             {hasMoreTasks && (
@@ -1292,7 +1556,91 @@ export default function TasksClientPage() {
           </div>
         )}
       </FadeIn>
+
+      {todaysHabits.length > 0 && (
+      <FadeIn delay={0.18} className="mt-6 min-w-0">
+      <div ref={habitsRef} className="scroll-mt-4">
+        <div className="flex items-center justify-between gap-3 px-3 pb-1">
+          <div className="min-w-0">
+            <h3 className="font-heading text-sm font-semibold tracking-tight">
+              Habits
+            </h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {completedHabitCount} of {todaysHabits.length} done today
+            </p>
+          </div>
+          <Link
+            href="/habits"
+            className="shrink-0 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            View all
+          </Link>
+        </div>
+
+          <ul className="flex flex-col gap-1">
+            {todaysHabits.map((habit) => {
+              const log = habitLogTodayByHabit.get(habit.id);
+              const complete = log?.status === "completed";
+              const isQuantified =
+                habit.type === "count" || habit.type === "measure";
+
+              return (
+                <li
+                  key={habit.id}
+                  className={cn(
+                    "flex min-w-0 items-center gap-3 rounded-xl px-3 py-4 transition-colors",
+                    complete ? "bg-primary/[0.05]" : "hover:bg-muted/50"
+                  )}
+                >
+                  <TaskCheckbox
+                    checked={complete}
+                    disabled={habitSavingIds.has(habit.id)}
+                    onCheckedChange={() => void handleToggleHabit(habit)}
+                    aria-label={`Mark ${habit.name} as ${complete ? "incomplete" : "complete"}`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={cn(
+                        "text-base font-medium leading-snug",
+                        complete && "text-muted-foreground line-through"
+                      )}
+                    >
+                      {habit.name}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="rounded-full border bg-muted/50 px-2 py-0.5">
+                        {habitScheduleLabel(habit)}
+                      </span>
+                      <span className="rounded-full border bg-muted/50 px-2 py-0.5 capitalize">
+                        {habit.category}
+                      </span>
+                      {isQuantified && (
+                        <span className="rounded-full border bg-muted/50 px-2 py-0.5 tabular-nums">
+                          {log?.value ?? 0}/{habit.targetValue}
+                          {habit.unit ? ` ${habit.unit}` : ""}
+                        </span>
+                      )}
+                      {habit.startTime && (
+                        <span className="rounded-full border bg-muted/50 px-2 py-0.5 tabular-nums">
+                          {habit.startTime}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {habitSavingIds.has(habit.id) && (
+                    <span className="shrink-0 text-xs text-muted-foreground" role="status">
+                      Saving…
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
       </div>
+      </FadeIn>
+      )}
+      </div>
+
       </section>
       <TaskDetails
         task={selectedTask}
@@ -1319,6 +1667,28 @@ export default function TasksClientPage() {
         }
         onDeleteGroup={(group) => setDeleteGroupTarget(group)}
       />
+
+      <AnimatePresence>
+        {todaysHabits.length > 0 && !habitsInView && (
+          <motion.button
+            key="habits-fab"
+            type="button"
+            onClick={handleScrollToHabits}
+            initial={{ opacity: 0, y: 16, x: "-50%", scale: 0.92 }}
+            animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
+            exit={{ opacity: 0, y: 16, x: "-50%", scale: 0.92 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-1/2 z-40 flex items-center gap-2.5 rounded-full border border-border/70 bg-background/90 px-6 py-3.5 text-base font-semibold text-foreground shadow-lg shadow-black/10 backdrop-blur-xl transition-colors hover:bg-background md:bottom-6"
+            aria-label="Scroll to habits"
+          >
+            <span>Habits</span>
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium tabular-nums text-primary">
+              {completedHabitCount}/{todaysHabits.length}
+            </span>
+            <ChevronDown className="size-4" />
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       <div className="fixed inset-x-2 bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] z-30 flex items-end justify-end gap-2 md:hidden">
         <AnimatePresence initial={false}>
@@ -1410,7 +1780,7 @@ export default function TasksClientPage() {
               </DrawerTitle>
               <DrawerDescription className="mt-1">
                 {selectedTask
-                  ? `${selectedTask.category === "Challenge" ? "Challenge" : selectedTask.category} · ${selectedTask.dueDate ? shortLabel(selectedTask.dueDate) : "No due date"}`
+                  ? `${selectedTask.category} · ${selectedTask.dueDate ? shortLabel(selectedTask.dueDate) : "No due date"}`
                   : "Review the task details, schedule, and progress."}
               </DrawerDescription>
             </div>
@@ -1463,13 +1833,9 @@ export default function TasksClientPage() {
         }}
         task={editing}
         groups={taskGroups}
-        defaultGroupId={
-          selectedGroupId !== "all" &&
-          selectedGroupId !== "ungrouped" &&
-          selectedGroupId !== "challenges"
-            ? selectedGroupId
-            : undefined
-        }
+        defaultGroupId=        {selectedGroupId !== "all" && selectedGroupId !== "ungrouped"
+          ? selectedGroupId
+          : undefined}
         onSave={handleSave}
       />
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Leaderboard",
-  description: "View progress rankings and challenge performance with friends.",
+  description: "View progress rankings and task performance with friends.",
   robots: {
     index: false,
     follow: false,

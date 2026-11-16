@@ -78,7 +78,7 @@ const TYPES: {
   {
     value: "measure",
     title: "Measure",
-    description: "Log an amount or duration",
+    description: "Track a value or duration",
     icon: Ruler,
   },
   {
@@ -274,7 +274,7 @@ function HabitForm({
         </fieldset>
 
         <fieldset className="flex flex-col gap-2 sm:col-span-2">
-          <legend className="mb-2 text-sm font-medium">Tracking style</legend>
+          <legend className="mb-2 text-sm font-medium">How you track it</legend>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {TYPES.map((type) => {
               const Icon = type.icon;
@@ -307,7 +307,7 @@ function HabitForm({
         {(form.type === "count" || form.type === "measure") && (
           <div className="grid grid-cols-2 gap-3 sm:col-span-2">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="habit-target">Daily target</Label>
+              <Label htmlFor="habit-target">Daily goal</Label>
               <Input
                 id="habit-target"
                 type="number"
@@ -363,7 +363,7 @@ function HabitForm({
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="habit-time">Routine time (optional)</Label>
+          <Label htmlFor="habit-time">Time of day (optional)</Label>
           <Input
             id="habit-time"
             type="time"
@@ -454,7 +454,7 @@ function HabitForm({
         </div>
 
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-2 text-sm font-medium">Accent color</legend>
+          <legend className="mb-2 text-sm font-medium">Color</legend>
           <div className="flex h-12 items-center gap-3">
             {COLORS.map((color) => (
               <button

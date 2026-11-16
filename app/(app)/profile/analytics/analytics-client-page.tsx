@@ -83,7 +83,6 @@ const CHART_COLORS = [
 
 const activityConfig = {
   completed: { label: "Completed", color: "var(--chart-1)" },
-  created: { label: "Created", color: "var(--chart-2)" },
 } satisfies ChartConfig;
 
 const weeklyConfig = {
@@ -294,9 +293,8 @@ export default function AnalyticsClientPage() {
         completed: rangeCompletions.filter(
           (completion) => completion.completedOn === date
         ).length,
-        created: tasks.filter((task) => task.createdAt === date).length,
       })),
-    [dates, rangeCompletions, tasks]
+    [dates, rangeCompletions]
   );
 
   const categoryData = React.useMemo(() => {
@@ -370,7 +368,7 @@ export default function AnalyticsClientPage() {
   );
   const kpis = [
     {
-      label: `Completed in ${range} days`,
+      label: `Completed in last ${range} days`,
       value: String(rangeCompletions.length),
       detail: rangeCompletions.length
         ? "Recorded task completions"
@@ -378,7 +376,7 @@ export default function AnalyticsClientPage() {
       icon: CheckCircle2,
     },
     {
-      label: "Current completion rate",
+      label: "Today's completion rate",
       value: `${completionRate}%`,
       detail: tasks.length
         ? `${completedToday.size} of ${tasks.length} tasks done today`
@@ -386,13 +384,13 @@ export default function AnalyticsClientPage() {
       icon: TrendingUp,
     },
     {
-      label: "Completed focus time",
+      label: "Focus time completed",
       value: displayDuration(focusMinutes),
       detail: focusMinutes ? "Based on task duration" : "No focus time recorded yet",
       icon: Clock,
     },
     {
-      label: "Best current streak",
+      label: "Best active streak",
       value: `${currentStreak}d`,
       detail: tasks.some((task) => task.streakEnabled)
         ? "Across tracked tasks"
@@ -516,7 +514,7 @@ export default function AnalyticsClientPage() {
             <h2 className="text-sm font-semibold">Task activity</h2>
             <span className="ml-auto text-xs text-muted-foreground">{range} days</span>
           </div>
-            {rangeCompletions.length || tasks.some((task) => dates.includes(task.createdAt)) ? (
+            {rangeCompletions.length ? (
               <ChartContainer
                 config={activityConfig}
                 className="h-[320px] w-full sm:h-[360px]"
@@ -526,13 +524,11 @@ export default function AnalyticsClientPage() {
                   <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} minTickGap={28} />
                   <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <ChartLegend content={<ChartLegendContent />} />
                   <Area type="monotone" dataKey="completed" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.14} strokeWidth={2.5} />
-                  <Area type="monotone" dataKey="created" stroke="var(--chart-2)" fill="var(--chart-2)" fillOpacity={0.08} strokeWidth={2} />
                 </AreaChart>
               </ChartContainer>
             ) : (
-              <EmptyChart>No task activity recorded in this date range.</EmptyChart>
+              <EmptyChart>No task completions recorded in this date range.</EmptyChart>
             )}
         </section>
 
@@ -673,7 +669,7 @@ export default function AnalyticsClientPage() {
           )}
         </section>
 
-        <section className="min-w-0 border-b px-3 py-3 sm:col-span-2 sm:px-4 md:px-6 lg:px-8">
+        <section className="min-w-0 border-b px-3 py-3 sm:border-r sm:px-4 md:px-6 lg:px-8">
           <div className="mb-2 flex items-center gap-2">
             <Activity className="size-4 text-primary" />
             <h2 className="text-sm font-semibold">Habit check-ins</h2>
@@ -694,6 +690,28 @@ export default function AnalyticsClientPage() {
             </ChartContainer>
           ) : (
             <EmptyChart>No scheduled habit check-ins in this date range.</EmptyChart>
+          )}
+        </section>
+
+        <section className="min-w-0 border-b px-3 py-3 sm:px-4 md:px-6 lg:px-8">
+          <div className="mb-2 flex items-center gap-2">
+            <TrendingUp className="size-4 text-primary" />
+            <h2 className="text-sm font-semibold">Weekly comparison</h2>
+          </div>
+          {hasWeeklyCompletions ? (
+            <ChartContainer config={weeklyConfig} className="h-[320px] w-full sm:h-[360px]">
+              <BarChart data={weeklyComparison} margin={{ left: 4, right: 8, top: 8 }}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <ChartLegend content={<ChartLegendContent />} />
+                <Bar dataKey="lastWeek" fill="var(--chart-2)" radius={[4, 4, 0, 0]} barSize={12} />
+                <Bar dataKey="thisWeek" fill="var(--chart-1)" radius={[4, 4, 0, 0]} barSize={12} />
+              </BarChart>
+            </ChartContainer>
+          ) : (
+            <EmptyChart>No task completions recorded yet.</EmptyChart>
           )}
         </section>
 
@@ -747,7 +765,7 @@ export default function AnalyticsClientPage() {
                     {scheduled ? (
                       <ChartContainer
                         config={habitConsistencyConfig}
-                        className="h-[140px] w-full"
+                        className="h-[200px] w-full"
                       >
                         <AreaChart
                           data={series}
@@ -796,7 +814,7 @@ export default function AnalyticsClientPage() {
                         </AreaChart>
                       </ChartContainer>
                     ) : (
-                      <div className="flex h-[140px] items-center justify-center px-3 text-center text-xs text-muted-foreground">
+                      <div className="flex h-[200px] items-center justify-center px-3 text-center text-xs text-muted-foreground">
                         No scheduled days in this range.
                       </div>
                     )}
@@ -809,28 +827,6 @@ export default function AnalyticsClientPage() {
               Create an active habit to see a consistency graph for it.
             </p>
           )}
-        </section>
-
-        <section className="min-w-0 border-b px-3 py-3 sm:px-4 md:px-6 lg:px-8">
-          <div className="mb-2 flex items-center gap-2">
-            <TrendingUp className="size-4 text-primary" />
-            <h2 className="text-sm font-semibold">Weekly comparison</h2>
-          </div>
-              {hasWeeklyCompletions ? (
-                <ChartContainer config={weeklyConfig} className="h-[320px] w-full sm:h-[360px]">
-                  <BarChart data={weeklyComparison} margin={{ left: 4, right: 8, top: 8 }}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <ChartLegend content={<ChartLegendContent />} />
-                    <Bar dataKey="lastWeek" fill="var(--chart-2)" radius={[4, 4, 0, 0]} barSize={12} />
-                    <Bar dataKey="thisWeek" fill="var(--chart-1)" radius={[4, 4, 0, 0]} barSize={12} />
-                  </BarChart>
-                </ChartContainer>
-              ) : (
-                <EmptyChart>No task completions recorded yet.</EmptyChart>
-              )}
         </section>
       </div>
     </div>

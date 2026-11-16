@@ -90,7 +90,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <AuthProvider>
             <TooltipProvider delay={200}>{children}</TooltipProvider>
           </AuthProvider>
-          <Toaster position="top-center" richColors />
+          <Toaster position="bottom-right" closeButton toastOptions={{ duration: 4000 }} />
         </ThemeProvider>
       </body>
     </html>

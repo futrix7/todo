@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Friends",
-  description: "Stay connected with friends, challenges, and accountability in Taskflow.",
+  description: "Stay connected with friends, habits, and accountability in Taskflow.",
   robots: {
     index: false,
     follow: false,

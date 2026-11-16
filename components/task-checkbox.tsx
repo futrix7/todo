@@ -13,7 +13,9 @@ export function TaskCheckbox({
     <Checkbox
       {...props}
       className={cn(
-        "size-7 rounded-md [&_[data-slot=checkbox-indicator]>svg]:!size-5",
+        "size-9 rounded-lg border-foreground/35 bg-background shadow-xs transition-colors hover:border-foreground/55 sm:size-7 sm:rounded-md",
+        "data-checked:border-primary data-checked:bg-primary",
+        "[&_[data-slot=checkbox-indicator]>svg]:!size-6 sm:[&_[data-slot=checkbox-indicator]>svg]:!size-5",
         className
       )}
     />

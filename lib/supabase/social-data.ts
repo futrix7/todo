@@ -15,33 +15,6 @@ export interface OwnUsername {
   username_locked: boolean;
 }
 
-export async function loadChallengeStatusVisibility(
-  userId: string
-): Promise<boolean> {
-  const { data, error } = await getClient().rpc(
-    "get_my_challenge_status_visibility",
-    { p_user_id: userId }
-  );
-  if (error) throw error;
-  if (typeof data !== "boolean") {
-    throw new Error("Supabase returned challenge visibility in an invalid format.");
-  }
-  return data;
-}
-
-export async function saveChallengeStatusVisibility(
-  visible: boolean
-): Promise<void> {
-  if (typeof visible !== "boolean") {
-    throw new Error("Challenge visibility must be a boolean.");
-  }
-  const { error } = await getClient().rpc(
-    "save_my_challenge_status_visibility",
-    { p_visible: visible }
-  );
-  if (error) throw error;
-}
-
 export interface FriendRequest {
   id: string;
   requester_id: string;

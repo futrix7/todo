@@ -192,7 +192,7 @@ const NAV_ITEMS = [
   {
     href: "/friends",
     label: "Friends",
-    description: "Connect and take on challenges",
+    description: "Connect and build accountability",
     icon: UsersRound,
   },
   {
@@ -200,12 +200,6 @@ const NAV_ITEMS = [
     label: "Leaderboard",
     description: "Compare progress with friends",
     icon: Medal,
-  },
-  {
-    href: "/friends/challenges",
-    label: "Challenges",
-    description: "Join community challenges",
-    icon: Trophy,
   },
 ];
 
@@ -517,7 +511,6 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
   const links = [
     { id: "all", label: "All tasks", icon: Layers },
     { id: "ungrouped", label: "Ungrouped", icon: Inbox },
-    { id: "challenges", label: "Challenges", icon: Trophy },
     ...groups.map((group) => {
       const icon = TASK_GROUP_ICONS[group.icon as keyof typeof TASK_GROUP_ICONS] ?? File;
       return { id: group.id, label: group.name, icon };
@@ -543,7 +536,6 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
           aria-describedby={sidebarErrorId}
           maxLength={60}
           autoComplete="off"
-          autoFocus
           required
         />
       </div>
@@ -975,9 +967,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        "flex bg-background",
-        !isTasksPage && "min-h-dvh",
-        isTasksPage && "h-dvh min-h-0 overflow-hidden",
+        "flex min-h-dvh bg-background",
+        isTasksPage && "lg:h-dvh lg:min-h-0 lg:overflow-hidden",
         isCalendarPage && "lg:h-dvh lg:min-h-0 lg:overflow-hidden"
       )}
     >
@@ -985,17 +976,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div
         className={cn(
           "flex min-w-0 flex-1 flex-col lg:flex-row",
-          isTasksPage && "h-full min-h-0",
+          isTasksPage && "lg:h-full lg:min-h-0",
           isCalendarPage && "lg:h-full lg:min-h-0"
         )}
       >
         {isTasksPage && <TaskGroupSidebar pathname={pathname} />}
         <main
           className={cn(
-            "min-w-0 flex-1 px-3 py-4 sm:px-4 sm:py-6 md:px-6 md:py-8 md:pb-8",
-            !isTasksPage && "pb-24 sm:pb-24 lg:px-8 lg:py-6",
+            "min-w-0 flex-1",
+            !isTasksPage &&
+              !isCalendarPage &&
+              "px-3 py-4 pb-24 sm:px-4 sm:py-6 sm:pb-24 md:px-6 md:py-8 md:pb-8 lg:px-8 lg:py-6",
             isTasksPage &&
-              "flex min-h-0 flex-col overflow-hidden px-2 pt-0 pb-[calc(4rem_+_env(safe-area-inset-bottom))] sm:px-3 sm:pb-[calc(4rem_+_env(safe-area-inset-bottom))] md:px-5 md:pb-8 lg:px-6 lg:py-5",
+              "px-2 pt-0 pb-[calc(4rem_+_env(safe-area-inset-bottom))] sm:px-3 sm:pb-[calc(4rem_+_env(safe-area-inset-bottom))] md:px-5 md:pb-8 lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden lg:px-6 lg:py-5",
             isCalendarPage &&
               "p-0 pb-24 md:pb-0 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden"
           )}
@@ -1003,7 +996,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div
             className={cn(
               "w-full min-w-0 app-scroll-region",
-              isTasksPage && "flex min-h-0 flex-1 flex-col",
+              isTasksPage && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col",
               isCalendarPage && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
             )}
           >

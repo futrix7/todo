@@ -330,16 +330,16 @@ function HabitCard({
                   type="number"
                   min="0.1"
                   step="any"
-                  aria-label={`${habit.name} amount`}
+                  aria-label={`${habit.name} progress`}
                   className="h-8 w-20 rounded-lg bg-muted/40 px-2"
-                  placeholder={habit.unit || "Amount"}
+                  placeholder={habit.unit || "Value"}
                   value={measureValue}
                   onChange={(event) => setMeasureValue(event.target.value)}
                   disabled={saving}
                 />
                 <Button type="submit" size="sm" className="h-8 px-2.5" disabled={saving}>
                   <Check />
-                  Log
+                  Save
                 </Button>
               </form>
             )}
@@ -378,7 +378,7 @@ function HabitCard({
                 disabled={saving}
                 onClick={onSkip}
               >
-                Undo grace day
+                Undo skip
               </Button>
             ) : !complete ? (
               <Button
@@ -485,7 +485,7 @@ function HabitCard({
             {skipped && (
               <span className="inline-flex items-center gap-1.5 text-muted-foreground">
                 <CalendarDays className="size-3.5" />
-                Grace day used
+                Skipped today
               </span>
             )}
           </div>
@@ -519,7 +519,7 @@ function HabitCard({
         <div className="mt-5 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm font-medium">
-              {habit.type === "count" ? "Today’s count" : "Today’s measure"}
+              {habit.type === "count" ? "Today’s count" : "Today’s progress"}
             </span>
             <span className="text-sm font-semibold tabular-nums">
               {value} / {habit.targetValue}
@@ -575,16 +575,16 @@ function HabitCard({
                   type="number"
                   min="0.1"
                   step="any"
-                  aria-label={`${habit.name} amount`}
+                  aria-label={`${habit.name} progress`}
                   className="h-12 w-28 rounded-xl bg-muted/40 px-4"
-                  placeholder={habit.unit || "Amount"}
+                  placeholder={habit.unit || "Value"}
                   value={measureValue}
                   onChange={(event) => setMeasureValue(event.target.value)}
                   disabled={saving}
                 />
                 <Button type="submit" size="lg" className="h-12 rounded-xl px-5" disabled={saving}>
                   <Check />
-                  Log amount
+                  Save progress
                 </Button>
               </form>
             )}
@@ -627,7 +627,7 @@ function HabitCard({
                 disabled={saving}
                 onClick={onSkip}
               >
-                Undo grace day
+                Undo skip
               </Button>
             )}
           </div>
@@ -784,7 +784,7 @@ function HabitMonthGrid({
               <span className="flex size-5 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
                 <Minus className="size-3" />
               </span>
-              Grace day
+              Skipped
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="flex size-5 items-center justify-center rounded-md border-2 border-primary bg-background" />
@@ -905,15 +905,15 @@ function HabitMonthGrid({
                         ? `completed: ${log.value}${habit.unit ? ` ${habit.unit}` : ""}`
                         : "completed"
                       : skipped
-                        ? "grace day"
+                        ? "skipped"
                         : inProgress
                           ? `in progress: ${log.value}${habit.unit ? ` ${habit.unit}` : ""}`
                           : "not completed";
                     const isQuantified =
                       habit.type === "count" || habit.type === "measure";
                     const actionLabel = isQuantified
-                      ? `activate to ${log ? "edit" : "log"} ${
-                          habit.type === "count" ? "count" : "amount"
+                      ? `activate to ${log ? "edit" : "add"} ${
+                          habit.type === "count" ? "count" : "value"
                         }`
                       : completed
                         ? "activate to undo completion"
@@ -1047,8 +1047,8 @@ function HabitMonthGrid({
               <DialogHeader className="mb-4">
                 <DialogTitle>
                   {editingValue.habit.type === "count"
-                    ? "Log count"
-                    : "Log amount"}
+                    ? "Update count"
+                    : "Save progress"}
                 </DialogTitle>
                 <DialogDescription>
                   {editingValue.habit.name} ·{" "}
@@ -1072,7 +1072,7 @@ function HabitMonthGrid({
                 >
                   {editingValue.habit.type === "count"
                     ? "Count"
-                    : `Amount${editingValue.habit.unit ? ` (${editingValue.habit.unit})` : ""}`}
+                    : `Value${editingValue.habit.unit ? ` (${editingValue.habit.unit})` : ""}`}
                 </label>
                 <Input
                   id="habit-log-value"
@@ -1561,7 +1561,7 @@ export default function HabitsClientPage() {
             </span>
           </p>
           <p className="mt-0.5 truncate text-[10px] text-muted-foreground sm:text-xs">
-            Grace days preserve your streak.
+            Skipped days keep your streak.
           </p>
         </div>
       </section>
