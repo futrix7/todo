@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Habits",
-  description: "Track your habits, streaks, and routine progress in Taskflow.",
+  description: "Track your habits, streaks, and routine progress in Taskito.",
   robots: {
     index: false,
     follow: false,

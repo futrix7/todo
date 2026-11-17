@@ -30,7 +30,7 @@ export function AuthLayout({
             <Check className="size-4" strokeWidth={3} />
           </span>
           <span className="font-heading text-sm font-semibold tracking-tight">
-            Taskflow
+            Taskito
           </span>
         </Link>
 

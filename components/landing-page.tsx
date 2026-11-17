@@ -189,7 +189,7 @@ export default function LandingPage() {
               <Check className="size-4" strokeWidth={3} />
             </span>
             <span className="font-heading text-base font-semibold tracking-tight">
-              Taskflow
+              Taskito
             </span>
           </Link>
 
@@ -349,7 +349,7 @@ export default function LandingPage() {
                   <Badge variant="secondary" className="rounded-full px-3 py-1">
                     <Sparkles /> Full access
                   </Badge>
-                  <p className="mt-5 text-sm font-semibold">Taskflow monthly</p>
+                  <p className="mt-5 text-sm font-semibold">Taskito monthly</p>
                   <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
                     {isIndia ? (
                       <>
@@ -420,7 +420,7 @@ export default function LandingPage() {
             <span className="flex size-6 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Check className="size-3" strokeWidth={3} />
             </span>
-            Taskflow
+            Taskito
           </span>
           <div className="flex items-center gap-4">
             <Link href="#features" className="hover:text-foreground">

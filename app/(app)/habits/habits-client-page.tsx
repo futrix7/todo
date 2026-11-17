@@ -16,6 +16,7 @@ import {
   Clock3,
   Flame,
   Minus,
+  Monitor,
   Pencil,
   Plus,
 } from "lucide-react";
@@ -45,6 +46,7 @@ import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
 import { HabitEditorDialog, type HabitFormValues } from "@/components/habit-editor-dialog";
 import { HabitIcon } from "@/components/habit-icon";
 import { PageLoadingSkeleton } from "@/components/page-loading-skeleton";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -1151,6 +1153,10 @@ export default function HabitsClientPage() {
   const [editing, setEditing] = React.useState<Habit | null>(null);
   const [savingIds, setSavingIds] = React.useState<Set<string>>(new Set());
   const [savingHabit, setSavingHabit] = React.useState(false);
+  const isMobile = useIsMobile();
+  const [desktopHintDismissed, setDesktopHintDismissed] =
+    React.useState(false);
+  const showDesktopHint = isMobile && !desktopHintDismissed;
 
   React.useEffect(() => {
     if (!user?.id || !isSupabaseConfigured || schemaUnavailable) return;
@@ -1725,6 +1731,35 @@ export default function HabitsClientPage() {
           </div>
         </details>
       )}
+
+      <Dialog
+        open={showDesktopHint}
+        onOpenChange={(open) => {
+          if (!open) setDesktopHintDismissed(true);
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <span className="mb-1 flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Monitor className="size-5" />
+            </span>
+            <DialogTitle>Best experienced on a PC</DialogTitle>
+            <DialogDescription>
+              The habit tracker&apos;s monthly grid needs more room. For the best
+              experience, open Habits on a laptop or desktop.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              className="w-full sm:w-auto"
+              onClick={() => setDesktopHintDismissed(true)}
+            >
+              Continue on this device
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <HabitEditorDialog
         open={editorOpen}

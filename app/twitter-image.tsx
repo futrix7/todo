@@ -23,7 +23,7 @@ export default function TwitterImage() {
           padding: 64,
         }}
       >
-        <div style={{ fontSize: 28, fontWeight: 700, opacity: 0.8 }}>Taskflow</div>
+        <div style={{ fontSize: 28, fontWeight: 700, opacity: 0.8 }}>Taskito</div>
         <div style={{ marginTop: 16, fontSize: 72, fontWeight: 800, lineHeight: 1.05 }}>
           Plan your day. Build better habits.
         </div>

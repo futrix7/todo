@@ -1,4 +1,4 @@
--- Taskflow challenge catalog data.
+-- Taskito challenge catalog data.
 -- Run supabase/schema.sql first. This file only seeds challenge content.
 
 begin;

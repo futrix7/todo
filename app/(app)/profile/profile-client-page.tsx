@@ -58,6 +58,7 @@ import {
   loadTasks,
 } from "@/lib/supabase/task-data";
 import { useSupabaseDataStatus } from "@/components/supabase-data-provider";
+import { InstallAppButton } from "@/components/pwa-install-prompt";
 import {
   claimPermanentUsername,
   loadFriendLeaderboardScores,
@@ -584,6 +585,9 @@ export default function ProfilePage() {
               <span className="min-w-0 flex-1 text-sm font-medium">Log out</span>
               <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
             </button>
+            <div className="border-t p-2">
+              <InstallAppButton className="w-full justify-start" />
+            </div>
           </div>
         </section>
 
@@ -666,7 +670,7 @@ export default function ProfilePage() {
           <DialogHeader>
             <DialogTitle>Edit profile</DialogTitle>
             <DialogDescription className="sr-only">
-              Update how you appear across Taskflow.
+              Update how you appear across Taskito.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">

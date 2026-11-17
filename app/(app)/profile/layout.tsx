@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Profile",
-  description: "Manage your profile, preferences, and account details in Taskflow.",
+  description: "Manage your profile, preferences, and account details in Taskito.",
   robots: {
     index: false,
     follow: false,

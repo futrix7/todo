@@ -45,7 +45,7 @@ function initials(name: string) {
 }
 
 function notificationText(notification: SocialNotification) {
-  const name = notification.actor?.display_name ?? "A Taskflow user";
+  const name = notification.actor?.display_name ?? "A Taskito user";
   switch (notification.kind) {
     case "friend_request":
       return {

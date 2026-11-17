@@ -87,7 +87,7 @@ export function SupabaseDataProvider({
             </DialogTitle>
             <DialogDescription>
               {missingSchema
-                ? "Taskflow couldn’t find the required database tables. Run supabase/schema.sql in the Supabase SQL Editor, then try again."
+                ? "Taskito couldn’t find the required database tables. Run supabase/schema.sql in the Supabase SQL Editor, then try again."
                 : configurationMissing
                   ? "Supabase is not configured yet. Add your project URL and anon key to the environment, then restart the app."
                   : "We’re sorry for the trouble. We’ll be back in a few minutes. Please try again later."}

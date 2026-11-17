@@ -178,6 +178,20 @@ export async function searchProfiles(userId: string, search: string) {
   ).values()].slice(0, 10);
 }
 
+export async function loadSocialProfile(
+  userId: string
+): Promise<SocialProfile | null> {
+  const { data, error } = await getClient()
+    .from("profiles")
+    .select(
+      "user_id,display_name,username,bio,current_streak,longest_streak,last_activity_on"
+    )
+    .eq("user_id", userId)
+    .maybeSingle<SocialProfile>();
+  if (error) throw error;
+  return data ?? null;
+}
+
 export async function loadSuggestedProfiles(userId: string) {
   const { data, error } = await getClient()
     .from("profiles")

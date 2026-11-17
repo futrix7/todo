@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Choose new password",
-  description: "Set a new password for your Taskflow account.",
+  description: "Set a new password for your Taskito account.",
   robots: {
     index: false,
     follow: false,

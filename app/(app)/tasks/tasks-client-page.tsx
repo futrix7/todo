@@ -32,7 +32,13 @@ import type {
 import { Button } from "@/components/ui/button";
 import { TaskCheckbox } from "@/components/task-checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -74,6 +80,16 @@ import {
 type Filter = "all" | "active" | "done";
 
 const COMPLETED_TASK_LIST_RETENTION_MS = 8 * 60 * 60 * 1000;
+const DEFAULT_TASK_DETAILS_WIDTH = 320;
+
+// Large monitors have room for a bigger details panel out of the box, while
+// smaller screens keep a comfortable amount of list visible.
+function defaultTaskDetailsWidth() {
+  if (typeof window === "undefined") return DEFAULT_TASK_DETAILS_WIDTH;
+  if (window.innerWidth >= 1920) return 560;
+  if (window.innerWidth >= 1536) return 400;
+  return DEFAULT_TASK_DETAILS_WIDTH;
+}
 
 function scheduleLabel(task: Task) {
   if (!task.startTime) return task.endTime ? `by ${task.endTime}` : null;
@@ -108,6 +124,8 @@ function overdueLabel(task: Task, todayKey: string, now: number) {
 
 const TaskItem = React.memo(function TaskItem({
   task,
+  groupName,
+  showGroupName,
   onToggle,
   onEdit,
   onDelete,
@@ -119,6 +137,8 @@ const TaskItem = React.memo(function TaskItem({
   todayKey,
 }: {
   task: Task;
+  groupName?: string;
+  showGroupName: boolean;
   onToggle: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
@@ -131,6 +151,11 @@ const TaskItem = React.memo(function TaskItem({
 }) {
   const schedule = scheduleLabel(task);
   const overdue = overdueLabel(task, todayKey, now);
+  const taskBadge = groupName
+    ? showGroupName
+      ? groupName
+      : undefined
+    : task.category;
   const priorityClass =
     task.priority === "high"
       ? "border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300"
@@ -149,7 +174,7 @@ const TaskItem = React.memo(function TaskItem({
         delay: animate ? Math.min(index * 0.008, 0.08) : 0,
         ease: EASE,
       }}
-      className="group"
+      className="group border-b border-border/50 last:border-b-0"
     >
       <div
         onClick={(event) => {
@@ -162,7 +187,7 @@ const TaskItem = React.memo(function TaskItem({
           onSelect(task);
         }}
         className={cn(
-          "flex min-w-0 cursor-pointer items-center gap-2.5 rounded-xl px-3 py-3 transition-colors hover:bg-muted/50 sm:gap-3",
+          "flex min-w-0 cursor-pointer items-center gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-muted/50 sm:py-3",
           selected && "bg-primary/10",
           task.completed && "opacity-75"
         )}
@@ -171,31 +196,34 @@ const TaskItem = React.memo(function TaskItem({
           checked={task.completed}
           onCheckedChange={() => onToggle(task)}
           aria-label={`Mark ${task.title} as ${task.completed ? "incomplete" : "complete"}`}
+          className="shrink-0"
         />
         <div className="min-w-0 flex-1">
           <button
             type="button"
             onClick={() => onSelect(task)}
             className={cn(
-              "flex flex-wrap items-center gap-x-2 gap-y-1 text-left text-sm font-medium leading-snug focus-visible:outline-none focus-visible:underline",
+              "block w-full break-words text-left text-sm font-medium leading-snug focus-visible:outline-none focus-visible:underline",
               task.completed && "text-muted-foreground line-through"
             )}
           >
-            <span>{task.title}</span>
+            {task.title}
           </button>
           {task.notes && (
             <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground sm:line-clamp-2">
               {task.notes}
             </p>
           )}
-          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-muted-foreground">
-              {task.category}
-            </span>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[10px] leading-4">
+            {taskBadge && (
+              <span className="rounded-full border bg-muted/50 px-1.5 py-0 text-[10px] leading-4 text-muted-foreground">
+                {taskBadge}
+              </span>
+            )}
             {priorityClass && (
               <span
                 className={cn(
-                  "rounded-full border px-2 py-0.5 font-medium capitalize",
+                  "rounded-full border px-1.5 py-0 text-[10px] font-medium capitalize leading-4",
                   priorityClass
                 )}
               >
@@ -203,24 +231,24 @@ const TaskItem = React.memo(function TaskItem({
               </span>
             )}
             {schedule && (
-              <span className="rounded-full border bg-muted/50 px-2 py-0.5 tabular-nums text-muted-foreground">
+              <span className="rounded-full border bg-muted/50 px-1.5 py-0 text-[10px] tabular-nums leading-4 text-muted-foreground">
                 {schedule}
               </span>
             )}
             {overdue && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 font-medium tabular-nums text-rose-700 dark:text-rose-300">
-                <Clock className="size-3" />
+              <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/10 px-1.5 py-0 text-[10px] font-medium tabular-nums leading-4 text-rose-700 dark:text-rose-300">
+                <Clock className="size-2.5" />
                 {overdue}
               </span>
             )}
             {task.dueDate && (
-              <span className="inline-flex items-center gap-1 rounded-full border bg-muted/50 px-2 py-0.5 text-muted-foreground">
-                <CalendarDays className="size-3" />
+              <span className="inline-flex items-center gap-1 rounded-full border bg-muted/50 px-1.5 py-0 text-[10px] leading-4 text-muted-foreground">
+                <CalendarDays className="size-2.5" />
                 {shortLabel(task.dueDate)}
               </span>
             )}
             {task.repeat !== "none" && (
-              <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-muted-foreground">
+              <span className="rounded-full border bg-muted/50 px-1.5 py-0 text-[10px] leading-4 text-muted-foreground">
                 {REPEATS.find((r) => r.value === task.repeat)?.label ?? task.repeat}
               </span>
             )}
@@ -239,28 +267,30 @@ const TaskItem = React.memo(function TaskItem({
           </div>
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="text-muted-foreground/60 hover:text-muted-foreground"
-                aria-label="Task actions"
-              >
-                <MoreVertical />
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onEdit(task)}>
-              <Pencil /> Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(task)}>
-              <Trash2 /> Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="shrink-0">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground/60 hover:text-muted-foreground"
+                  aria-label="Task actions"
+                >
+                  <MoreVertical />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onEdit(task)}>
+                <Pencil /> Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={() => onDelete(task)}>
+                <Trash2 /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </motion.li>
   );
@@ -304,6 +334,54 @@ function TaskDetails({
   const hasContent = Boolean(task || group);
   const schedule = task ? scheduleLabel(task) : null;
   const overdue = task ? overdueLabel(task, todayKey, now) : null;
+  const actionsMenu = hasContent ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Task details actions"
+            className="shrink-0 text-muted-foreground"
+          >
+            <MoreVertical />
+          </Button>
+        }
+      />
+      <DropdownMenuContent align="end">
+        {task ? (
+          <>
+            <DropdownMenuItem onClick={() => onEdit(task)}>
+              <Pencil /> Edit task
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => onDelete(task)}
+            >
+              <Trash2 /> Delete task
+            </DropdownMenuItem>
+          </>
+        ) : group ? (
+          <>
+            <DropdownMenuItem onClick={() => onEditGroup(group)}>
+              <Pencil /> Edit group
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => onDeleteGroup(group)}
+            >
+              <Trash2 /> Delete group
+            </DropdownMenuItem>
+          </>
+        ) : null}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onClose}>
+          <X /> Close details
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : null;
   return (
     <aside
       className={cn(
@@ -348,7 +426,7 @@ function TaskDetails({
       {hasContent ? (
         <>
           {presentation === "panel" && (
-            <div className="flex min-h-12 items-center justify-between border-b px-4">
+            <div className="flex min-h-12 items-center justify-between gap-2 border-b px-4">
               <span className="truncate text-xs text-muted-foreground">
                 {task
                   ? task.dueDate
@@ -356,20 +434,16 @@ function TaskDetails({
                     : "No due date"
                   : "Task group"}
               </span>
-              {task && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Close task details"
-                  onClick={onClose}
-                >
-                  <X />
-                </Button>
-              )}
+              {actionsMenu}
             </div>
           )}
-          <div className="flex-1 space-y-5 overflow-y-auto p-4">
+          <div
+            className={cn(
+              "flex-1 space-y-5 overflow-y-auto overscroll-contain p-4",
+              presentation === "drawer" &&
+                "pb-[max(1rem,env(safe-area-inset-bottom))]"
+            )}
+          >
             {group && (
               <section className="border-b pb-4">
                 <p className="text-xs text-muted-foreground">Group</p>
@@ -416,24 +490,24 @@ function TaskDetails({
               )}
             </div>
             <dl className="divide-y rounded-lg border px-3">
-              <div className="flex items-center justify-between gap-3 py-3 text-sm">
+              <div className="flex items-center justify-between gap-3 py-2.5 text-sm">
                 <dt className="text-muted-foreground">Priority</dt>
                 <dd className="font-medium capitalize">{task.priority}</dd>
               </div>
-              <div className="flex items-center justify-between gap-3 py-3 text-sm">
+              <div className="flex items-center justify-between gap-3 py-2.5 text-sm">
                 <dt className="text-muted-foreground">List</dt>
                 <dd className="max-w-40 truncate font-medium">
-                  {task.category}
+                  {task.category || "None"}
                 </dd>
               </div>
-              <div className="flex items-center justify-between gap-3 py-3 text-sm">
+              <div className="flex items-center justify-between gap-3 py-2.5 text-sm">
                 <dt className="text-muted-foreground">Due date</dt>
                 <dd className="font-medium">
                   {task.dueDate ? shortLabel(task.dueDate) : "Not set"}
                 </dd>
               </div>
               {schedule && (
-                <div className="flex items-center justify-between gap-3 py-3 text-sm">
+                <div className="flex items-center justify-between gap-3 py-2.5 text-sm">
                   <dt className="text-muted-foreground">Schedule</dt>
                   <dd className="text-right font-medium tabular-nums">
                     {schedule}
@@ -445,14 +519,14 @@ function TaskDetails({
                   </dd>
                 </div>
               )}
-              <div className="flex items-center justify-between gap-3 py-3 text-sm">
+              <div className="flex items-center justify-between gap-3 py-2.5 text-sm">
                 <dt className="text-muted-foreground">Repeat</dt>
                 <dd className="font-medium">
                   {REPEATS.find((repeat) => repeat.value === task.repeat)?.label ?? "Does not repeat"}
                 </dd>
               </div>
               {task.streakEnabled && (
-                <div className="flex items-center justify-between gap-3 py-3 text-sm">
+                <div className="flex items-center justify-between gap-3 py-2.5 text-sm">
                   <dt className="text-muted-foreground">Streak</dt>
                   <dd className="font-medium">{task.currentStreak} days 🔥</dd>
                 </div>
@@ -469,62 +543,6 @@ function TaskDetails({
               </div>
             )}
           </div>
-          {group && (
-            <div className="flex gap-2 border-t p-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onEditGroup(group)}
-                className="flex-1 justify-start gap-2"
-              >
-                <Pencil />
-                Edit group
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onDeleteGroup(group)}
-                className="flex-1 justify-start gap-2"
-              >
-                <Trash2 />
-                Delete
-              </Button>
-            </div>
-          )}
-          {task && (
-            <div
-              className={cn(
-                "flex flex-wrap items-center justify-between gap-2 border-t p-3",
-                presentation === "drawer" &&
-                  "w-full flex-nowrap gap-0 border-t p-0"
-              )}
-            >
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onDelete(task)}
-                className={cn(
-                  "gap-2",
-                  presentation === "drawer" &&
-                    "h-12 w-1/2 justify-center rounded-none border-0"
-                )}
-              >
-                <Trash2 />
-                Delete task
-              </Button>
-              <Button
-                type="button"
-                onClick={() => onEdit(task)}
-                className={cn(
-                  presentation === "drawer" &&
-                    "h-12 w-1/2 justify-center rounded-none"
-                )}
-              >
-                <Pencil />
-                Edit task
-              </Button>
-            </div>
-          )}
         </>
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
@@ -558,6 +576,9 @@ export default function TasksClientPage() {
     return () => window.clearInterval(interval);
   }, []);
   const [loadedUserId, setLoadedUserId] = React.useState<string | null>(null);
+  const [loadedCompletedTaskIds, setLoadedCompletedTaskIds] = React.useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const [habits, setHabits] = React.useState<Habit[]>([]);
   const [habitLogs, setHabitLogs] = React.useState<HabitLog[]>([]);
   const [habitSavingIds, setHabitSavingIds] = React.useState<Set<string>>(
@@ -579,16 +600,30 @@ export default function TasksClientPage() {
   const [taskListLimit, setTaskListLimit] = React.useState(100);
   const [selectedTaskId, setSelectedTaskId] = React.useState<string | null>(null);
   const [mobileDetailsOpen, setMobileDetailsOpen] = React.useState(false);
-  const [taskDetailsWidth, setTaskDetailsWidth] = React.useState(320);
+  const [taskDetailsWidth, setTaskDetailsWidth] = React.useState(
+    DEFAULT_TASK_DETAILS_WIDTH
+  );
   const [resizingDetails, setResizingDetails] = React.useState(false);
   const listDetailsRef = React.useRef<HTMLDivElement>(null);
   const taskSaveInProgressRef = React.useRef(false);
   const nextTaskSubmissionAtRef = React.useRef(0);
+  const taskDetailsWidthAdjustedRef = React.useRef(false);
 
   function getMaxTaskDetailsWidth() {
+    if (typeof window === "undefined") return 560;
     const paneWidth = listDetailsRef.current?.clientWidth ?? window.innerWidth;
-    return Math.max(280, Math.min(560, paneWidth - 300));
+    const cap = window.innerWidth >= 1920 ? 720 : 560;
+    return Math.max(280, Math.min(cap, paneWidth - 300));
   }
+
+  // Adopt the wider default for large monitors, unless the panel has already
+  // been resized by hand.
+  React.useEffect(() => {
+    if (taskDetailsWidthAdjustedRef.current) return;
+    setTaskDetailsWidth(
+      Math.min(defaultTaskDetailsWidth(), getMaxTaskDetailsWidth())
+    );
+  }, []);
 
   function resizeTaskDetails(event: React.PointerEvent<HTMLDivElement>) {
     if (!resizingDetails || !listDetailsRef.current) return;
@@ -602,6 +637,7 @@ export default function TasksClientPage() {
 
   function startResizingTaskDetails(event: React.PointerEvent<HTMLDivElement>) {
     event.currentTarget.setPointerCapture(event.pointerId);
+    taskDetailsWidthAdjustedRef.current = true;
     setResizingDetails(true);
     const rightEdge = listDetailsRef.current?.getBoundingClientRect().right;
     if (rightEdge !== undefined) {
@@ -678,6 +714,26 @@ export default function TasksClientPage() {
     window.addEventListener("task-group-updated", handleGroupUpdated);
     return () =>
       window.removeEventListener("task-group-updated", handleGroupUpdated);
+  }, []);
+
+  React.useEffect(() => {
+    function handleGroupDeleteRequested(event: Event) {
+      if (!(event instanceof CustomEvent)) return;
+      const group = event.detail as TaskGroup | undefined;
+      if (!group?.id) return;
+      setMobileDetailsOpen(false);
+      setDeleteGroupTarget(group);
+    }
+
+    window.addEventListener(
+      "task-group-delete-requested",
+      handleGroupDeleteRequested
+    );
+    return () =>
+      window.removeEventListener(
+        "task-group-delete-requested",
+        handleGroupDeleteRequested
+      );
   }, []);
 
   React.useEffect(() => {
@@ -804,6 +860,19 @@ export default function TasksClientPage() {
       }),
     [tasks, completionsByTask, completedToday, todayKey]
   );
+  // Snapshot which tasks were already complete when the data loaded. Only this
+  // snapshot decides completed ordering, so in-session completion leaves the
+  // task where it is until the next load.
+  const completedSnapshotUserIdRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!loadedUserId) return;
+    if (completedSnapshotUserIdRef.current === loadedUserId) return;
+    completedSnapshotUserIdRef.current = loadedUserId;
+    setLoadedCompletedTaskIds(
+      new Set(dailyTasks.filter((task) => task.completed).map((task) => task.id))
+    );
+  }, [dailyTasks, loadedUserId]);
+
   const expiredCompletedTaskIds = React.useMemo(() => {
     const expired = new Set<string>();
     for (const task of dailyTasks) {
@@ -885,6 +954,14 @@ export default function TasksClientPage() {
         visible.push(task);
       }
 
+      // Order comes from the completion snapshot captured when the data loaded,
+      // so checking a task does not move it; it settles at the bottom on reload.
+      visible.sort(
+        (a, b) =>
+          Number(loadedCompletedTaskIds.has(a.id)) -
+          Number(loadedCompletedTaskIds.has(b.id))
+      );
+
       return {
         visible,
         groupedTaskCount,
@@ -895,6 +972,7 @@ export default function TasksClientPage() {
       dailyTasks,
       expiredCompletedTaskIds,
       filter,
+      loadedCompletedTaskIds,
       normalizedSearch,
       searchTextByTaskId,
       selectedGroupId,
@@ -939,6 +1017,10 @@ export default function TasksClientPage() {
         ? "Ungrouped tasks"
         : taskGroups.find((group) => group.id === selectedGroupId)?.name ??
           "All tasks";
+  const taskGroupNames = React.useMemo(
+    () => new Map(taskGroups.map((group) => [group.id, group.name])),
+    [taskGroups]
+  );
   const selectedGroup = taskGroups.find((group) => group.id === selectedGroupId);
 
   const handleCreate = React.useCallback(() => {
@@ -1393,15 +1475,15 @@ export default function TasksClientPage() {
       ref={listDetailsRef}
       className="flex w-full min-w-0 flex-col items-stretch gap-4 lg:h-full lg:min-h-0 lg:flex-row lg:gap-0"
     >
-      <section className="flex min-w-0 flex-1 flex-col gap-2 px-1 pt-0 pb-2 sm:px-2 sm:gap-4 lg:min-h-0 lg:gap-6 lg:overflow-hidden lg:py-4 lg:pl-2 lg:pr-5">
+      <section className="flex min-w-0 flex-1 flex-col gap-2 px-1 pt-2 pb-28 sm:px-2 sm:gap-4 sm:pt-3 lg:min-h-0 lg:gap-4 lg:overflow-hidden lg:py-4 lg:pl-2 lg:pr-4">
       {/* Header + progress */}
       <FadeIn delay={0.06} className="flex flex-col gap-2 sm:gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="hidden font-heading text-xl font-semibold tracking-tight lg:block">
+            <h2 className="truncate font-heading text-lg font-semibold tracking-tight sm:text-xl">
               {selectedGroupName}
             </h2>
-            <p className="text-xs text-muted-foreground lg:mt-1 lg:text-sm">
+            <p className="text-xs text-muted-foreground">
               {groupedTaskCount} {groupedTaskCount === 1 ? "task" : "tasks"}
             </p>
           </div>
@@ -1411,11 +1493,10 @@ export default function TasksClientPage() {
             onClick={handleCreate}
             aria-keyshortcuts="Shift+A"
             title="Add task (Shift+A)"
-            className="hidden md:inline-flex"
+            className="hidden lg:inline-flex"
           >
-            <Plus />
-            Add task
-            <kbd className="hidden rounded-md border border-primary-foreground/20 bg-primary-foreground/10 px-1.5 py-0.5 text-xs font-medium lg:inline-flex">
+            <Plus className="size-3.5" />
+            Add task              <kbd className="hidden rounded-md border border-primary-foreground/20 bg-primary-foreground/10 px-1.5 py-0.5 text-xs font-medium lg:inline-flex">
               Shift + A
             </kbd>
           </Button>
@@ -1436,7 +1517,7 @@ export default function TasksClientPage() {
         </div>
         <Progress
         value={progress}
-        className="[&_[data-slot=progress-track]]:h-1.5 lg:[&_[data-slot=progress-track]]:h-3"
+        className="[&_[data-slot=progress-track]]:h-1.5 lg:[&_[data-slot=progress-track]]:h-1.5"
         />
         <Tabs
           value={filter}
@@ -1445,7 +1526,7 @@ export default function TasksClientPage() {
             startFilterTransition(() => setFilter(value as Filter));
           }}
         >
-        <TabsList variant="default" className="grid h-8 w-full grid-cols-3 rounded-xl lg:h-10">
+        <TabsList variant="default" className="grid h-9 w-full grid-cols-3 rounded-xl">
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="active">Active</TabsTrigger>
             <TabsTrigger value="done">Done</TabsTrigger>
@@ -1489,13 +1570,19 @@ export default function TasksClientPage() {
         ) : (
           <div className="flex flex-col gap-6">
             {displayedTasks.length > 0 && (
-              <ul className="flex min-w-0 flex-col gap-2">
+              <ul className="flex min-w-0 flex-col gap-0">
                 {displayedTasks.length <= 30 ? (
                   <AnimatePresence mode="popLayout">
                     {displayedTasks.map((task, i) => (
                       <TaskItem
                         key={task.id}
                         task={task}
+                        groupName={
+                          task.groupId
+                            ? taskGroupNames.get(task.groupId)
+                            : undefined
+                        }
+                        showGroupName={selectedGroupId !== task.groupId}
                         index={i}
                         animate
                         selected={selectedTask?.id === task.id}
@@ -1519,6 +1606,12 @@ export default function TasksClientPage() {
                     <TaskItem
                       key={task.id}
                       task={task}
+                      groupName={
+                        task.groupId
+                          ? taskGroupNames.get(task.groupId)
+                          : undefined
+                      }
+                      showGroupName={selectedGroupId !== task.groupId}
                       index={0}
                       animate={false}
                       selected={selectedTask?.id === task.id}
@@ -1588,7 +1681,7 @@ export default function TasksClientPage() {
                 <li
                   key={habit.id}
                   className={cn(
-                    "flex min-w-0 items-center gap-3 rounded-xl px-3 py-4 transition-colors",
+                    "flex min-w-0 items-center gap-3 rounded-xl px-3 py-3 transition-colors sm:py-4",
                     complete ? "bg-primary/[0.05]" : "hover:bg-muted/50"
                   )}
                 >
@@ -1607,21 +1700,21 @@ export default function TasksClientPage() {
                     >
                       {habit.name}
                     </p>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                      <span className="rounded-full border bg-muted/50 px-2 py-0.5">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[10px] leading-4 text-muted-foreground">
+                      <span className="rounded-full border bg-muted/50 px-1.5 py-0 text-[10px] leading-4">
                         {habitScheduleLabel(habit)}
                       </span>
-                      <span className="rounded-full border bg-muted/50 px-2 py-0.5 capitalize">
+                      <span className="rounded-full border bg-muted/50 px-1.5 py-0 text-[10px] capitalize leading-4">
                         {habit.category}
                       </span>
                       {isQuantified && (
-                        <span className="rounded-full border bg-muted/50 px-2 py-0.5 tabular-nums">
+                        <span className="rounded-full border bg-muted/50 px-1.5 py-0 text-[10px] tabular-nums leading-4">
                           {log?.value ?? 0}/{habit.targetValue}
                           {habit.unit ? ` ${habit.unit}` : ""}
                         </span>
                       )}
                       {habit.startTime && (
-                        <span className="rounded-full border bg-muted/50 px-2 py-0.5 tabular-nums">
+                        <span className="rounded-full border bg-muted/50 px-1.5 py-0 text-[10px] tabular-nums leading-4">
                           {habit.startTime}
                         </span>
                       )}
@@ -1644,18 +1737,19 @@ export default function TasksClientPage() {
       </section>
       <TaskDetails
         task={selectedTask}
-        group={selectedGroup}
+        group={selectedTask ? undefined : selectedGroup}
         width={taskDetailsWidth}
         now={now}
         todayKey={todayKey}
         onResizeStart={startResizingTaskDetails}
         onResize={resizeTaskDetails}
         onResizeEnd={stopResizingTaskDetails}
-        onResizeWidth={(delta) =>
+        onResizeWidth={(delta) => {
+          taskDetailsWidthAdjustedRef.current = true;
           setTaskDetailsWidth((current) =>
             Math.min(getMaxTaskDetailsWidth(), Math.max(280, current + delta))
-          )
-        }
+          );
+        }}
         onClose={() => setSelectedTaskId(null)}
         onToggle={handleToggle}
         onEdit={handleEditTask}
@@ -1678,11 +1772,15 @@ export default function TasksClientPage() {
             animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
             exit={{ opacity: 0, y: 16, x: "-50%", scale: 0.92 }}
             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-1/2 z-40 flex items-center gap-2.5 rounded-full border border-border/70 bg-background/90 px-6 py-3.5 text-base font-semibold text-foreground shadow-lg shadow-black/10 backdrop-blur-xl transition-colors hover:bg-background md:bottom-6"
+            className={cn(
+              "fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-1/2 z-40 flex items-center gap-2 rounded-full border border-border/70 bg-background/90 px-4 py-2.5 text-sm font-semibold text-foreground shadow-lg shadow-black/10 backdrop-blur-xl transition-colors hover:bg-background lg:bottom-6 lg:px-6 lg:py-3.5 lg:text-base",
+              // The selected-task bar occupies the bottom strip on small screens.
+              selectedTask && "hidden lg:flex"
+            )}
             aria-label="Scroll to habits"
           >
             <span>Habits</span>
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium tabular-nums text-primary">
+            <span className="rounded-full bg-primary/10 px-1.5 py-0 text-[10px] font-medium leading-4 tabular-nums text-primary">
               {completedHabitCount}/{todaysHabits.length}
             </span>
             <ChevronDown className="size-4" />
@@ -1690,7 +1788,7 @@ export default function TasksClientPage() {
         )}
       </AnimatePresence>
 
-      <div className="fixed inset-x-2 bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] z-30 flex items-end justify-end gap-2 md:hidden">
+      <div className="fixed inset-x-4 bottom-[calc(4rem+env(safe-area-inset-bottom)+0.75rem)] z-30 flex items-end justify-end gap-2 md:bottom-[calc(0.75rem+env(safe-area-inset-bottom))] lg:hidden">
         <AnimatePresence initial={false}>
           {selectedTask && (
             <motion.div
@@ -1742,17 +1840,17 @@ export default function TasksClientPage() {
               window.dispatchEvent(new Event("task-group-create-requested"))
             }
             aria-label="Create group"
-            className="size-12 rounded-2xl border-border/50 bg-background/70 p-0 shadow-xl shadow-black/10 backdrop-blur-xl hover:bg-background/85"
+            className="size-11 rounded-2xl border-border/70 bg-muted text-foreground p-0 shadow-xl shadow-black/10 backdrop-blur-xl hover:bg-muted/80"
           >
-            <FolderPlus className="size-5" />
+            <FolderPlus className="size-4.5" />
           </Button>
           <Button
             type="button"
-            variant="outline"
+            variant="default"
             size="icon-lg"
             onClick={handleCreate}
             aria-label="Add task"
-            className="size-12 rounded-2xl border-border/50 bg-background/70 p-0 shadow-xl shadow-black/10 backdrop-blur-xl hover:bg-background/85"
+            className="size-11 rounded-2xl border-primary p-0 shadow-xl shadow-primary/20 hover:bg-primary/90"
           >
             <Plus className="size-5" />
           </Button>
@@ -1765,7 +1863,7 @@ export default function TasksClientPage() {
         swipeDirection="down"
       >
         <DrawerContent className="h-[min(80dvh,36rem)] max-h-[min(80dvh,36rem)]">
-          <DrawerHeader className="flex-row items-start gap-3">
+          <DrawerHeader className="flex-row items-start gap-3 pt-4">
             {selectedTask && (
               <TaskCheckbox
                 checked={selectedTask.completed}
@@ -1780,21 +1878,57 @@ export default function TasksClientPage() {
               </DrawerTitle>
               <DrawerDescription className="mt-1">
                 {selectedTask
-                  ? `${selectedTask.category} · ${selectedTask.dueDate ? shortLabel(selectedTask.dueDate) : "No due date"}`
+                  ? [
+                      selectedTask.category,
+                      selectedTask.dueDate
+                        ? shortLabel(selectedTask.dueDate)
+                        : "No due date",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
                   : "Review the task details, schedule, and progress."}
               </DrawerDescription>
             </div>
             {selectedTask && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Close task details"
-                onClick={() => setMobileDetailsOpen(false)}
-                className="shrink-0"
-              >
-                <X />
-              </Button>
+              <div className="flex shrink-0 items-center gap-1">
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Task actions"
+                        className="text-muted-foreground"
+                      >
+                        <MoreVertical />
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => handleEditTask(selectedTask)}
+                    >
+                      <Pencil /> Edit task
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => handleRequestDelete(selectedTask)}
+                    >
+                      <Trash2 /> Delete task
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Close task details"
+                  onClick={() => setMobileDetailsOpen(false)}
+                >
+                  <X />
+                </Button>
+              </div>
             )}
           </DrawerHeader>
           {selectedTask && (

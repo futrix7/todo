@@ -51,7 +51,7 @@ const EMPTY_FORM: TaskFormValues = {
   notes: "",
   groupId: "",
   priority: "medium",
-  category: "Work",
+  category: "",
   dueDate: "",
   startTime: "",
   endTime: "",
@@ -110,6 +110,7 @@ function TaskForm({
   groups,
   defaultGroupId,
   defaultDueDate,
+  autoFocusTitle,
   onSave,
   onCancel,
 }: {
@@ -117,10 +118,12 @@ function TaskForm({
   groups: TaskGroup[];
   defaultGroupId?: string;
   defaultDueDate?: string;
+  autoFocusTitle?: boolean;
   onSave: (form: TaskFormValues) => void;
   onCancel: () => void;
 }) {
   const isEditing = Boolean(task);
+  const titleInputRef = React.useRef<HTMLInputElement>(null);
   const [tab, setTab] = React.useState<"simple" | "advanced">("simple");
   const [form, setForm] = React.useState<TaskFormValues>(() =>
     task
@@ -132,6 +135,14 @@ function TaskForm({
         }
   );
   const scheduledMinutes = minutesBetweenTimes(form.startTime, form.endTime);
+
+  React.useEffect(() => {
+    if (!autoFocusTitle) return;
+    const frame = window.requestAnimationFrame(() => {
+      titleInputRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [autoFocusTitle]);
 
   const set = <K extends keyof TaskFormValues>(
     key: K,
@@ -212,6 +223,7 @@ function TaskForm({
               <Label htmlFor="task-title">Title</Label>
               <Input
                 id="task-title"
+                ref={titleInputRef}
                 value={form.title}
                 onChange={(event) => set("title", event.target.value)}
                 autoComplete="off"
@@ -379,17 +391,23 @@ function TaskForm({
               <div className="flex flex-col gap-1.5">
                 <Label>Category</Label>
                 <Select
-                  value={form.category}
-                  onValueChange={(value) => set("category", value ?? form.category)}
-                  items={CATEGORIES.map((category) => ({
-                    value: category,
-                    label: category,
-                  }))}
+                  value={form.category || "none"}
+                  onValueChange={(value) =>
+                    set("category", value === null || value === "none" ? "" : value)
+                  }
+                  items={[
+                    { value: "none", label: "No category" },
+                    ...CATEGORIES.map((category) => ({
+                      value: category,
+                      label: category,
+                    })),
+                  ]}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">No category</SelectItem>
                     {CATEGORIES.map((category) => (
                       <SelectItem key={category} value={category}>
                         {category}
@@ -489,6 +507,7 @@ export function TaskEditorDialog({
       groups={groups}
       defaultGroupId={defaultGroupId}
       defaultDueDate={defaultDueDate}
+      autoFocusTitle={!isMobile}
       onSave={(values) => {
         setClosingTask(displayedTask);
         onSave(values);

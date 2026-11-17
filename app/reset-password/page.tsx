@@ -138,7 +138,7 @@ export default function ResetPasswordPage() {
             onClick={() => router.replace("/tasks")}
           >
             <Check />
-            Continue to Taskflow
+            Continue to Taskito
           </Button>
         </div>
       ) : hasSession ? (

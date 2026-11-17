@@ -24,7 +24,7 @@ class MissingTaskDataSchemaError extends Error {
   readonly code = "PGRST205";
 
   constructor() {
-    super("Taskflow data tables are unavailable.");
+    super("Taskito data tables are unavailable.");
     this.name = "MissingTaskDataSchemaError";
   }
 }

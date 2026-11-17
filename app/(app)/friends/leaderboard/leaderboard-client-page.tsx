@@ -5,11 +5,13 @@ import Link from "next/link";
 import {
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Globe2,
   RefreshCw,
   ShieldCheck,
   Target,
+  Trophy,
   UsersRound,
 } from "lucide-react";
 
@@ -46,6 +48,12 @@ function initials(name: string) {
 function formatRate(rate: number | null) {
   return rate === null ? "—" : `${Math.round(rate * 100)}%`;
 }
+
+const MOBILE_RANK_STYLES = [
+  "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/15 dark:text-amber-300",
+  "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-400/30 dark:bg-slate-400/15 dark:text-slate-300",
+  "border-orange-300 bg-orange-100 text-orange-900 dark:border-orange-400/30 dark:bg-orange-400/15 dark:text-orange-300",
+];
 
 interface PodiumEntry {
   id: string;
@@ -319,10 +327,514 @@ export default function LeaderboardClientPage() {
   const activeError = scope === "global" ? globalError : error;
   const displayedOwnScore =
     scope === "global" ? ownGlobalScore : ownScore;
+  const myActiveRank =
+    scope === "global" ? ownGlobalScore?.global_rank ?? null : myRank;
+  const totalActiveParticipants =
+    scope === "global" ? totalGlobalMembers : participants.length;
+  const ownScorePercentage =
+    displayedOwnScore?.score == null
+      ? 0
+      : Math.min(100, Math.max(0, displayedOwnScore.score));
+  const podiumEntries: PodiumEntry[] = activeRankedParticipants
+    .filter((participant) => participant.score.score !== null)
+    .slice(0, 3)
+    .map((participant) => ({
+      id: participant.id,
+      name: participant.name,
+      score: participant.score.score?.toFixed(1) ?? "—",
+      detail: "/ 100",
+    }));
 
   return (
     <div className="-mx-3 -my-4 flex min-h-dvh w-[calc(100%+1.5rem)] min-w-0 flex-col sm:-mx-4 sm:-my-6 sm:w-[calc(100%+2rem)] md:-mx-6 md:-my-8 md:w-[calc(100%+3rem)] lg:-mx-8 lg:-my-6 lg:w-[calc(100%+4rem)]">
-      <header className="flex min-h-20 flex-wrap items-center justify-between gap-3 border-b px-3 pb-3 pt-5 sm:px-4 md:px-6 lg:px-8">
+      {/* Mobile header */}
+      <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur-xl md:hidden">
+        <div className="flex items-center gap-3 px-4 pb-3 pt-4">
+          <Link
+            href="/friends"
+            aria-label="Back to friends"
+            className="grid size-11 shrink-0 place-items-center rounded-2xl border border-border/70 bg-card text-muted-foreground transition-colors active:bg-muted"
+          >
+            <ArrowLeft className="size-[18px]" />
+          </Link>
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <Trophy className="size-4" aria-hidden="true" />
+              Rankings
+            </p>
+            <h1 className="mt-0.5 font-heading text-[26px] font-semibold leading-tight tracking-tight">
+              Leaderboard
+            </h1>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {activeLoading
+                ? "Loading rankings…"
+                : totalActiveParticipants
+                  ? `${totalActiveParticipants.toLocaleString()} ${
+                      totalActiveParticipants === 1 ? "person" : "people"
+                    } ranked`
+                  : "No one ranked yet"}
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Refresh leaderboard"
+            title="Refresh leaderboard"
+            disabled={activeLoading}
+            onClick={() => {
+              if (scope === "friends") {
+                setLoading(true);
+                void refresh();
+              } else {
+                void refreshGlobal();
+              }
+            }}
+            className="grid size-11 shrink-0 place-items-center rounded-2xl border border-border/70 bg-card text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
+          >
+            <RefreshCw
+              className={
+                activeLoading ? "size-[18px] animate-spin" : "size-[18px]"
+              }
+            />
+          </button>
+        </div>
+        <div className="px-4 pb-3">
+          <div
+            role="tablist"
+            aria-label="Leaderboard scope"
+            className="grid grid-cols-2 gap-1 rounded-2xl border border-border/70 bg-muted/40 p-1"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={scope === "friends"}
+              onClick={() => setScope("friends")}
+              className={`flex h-10 items-center justify-center gap-2 rounded-xl text-sm font-medium transition-colors ${
+                scope === "friends"
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground"
+              }`}
+            >
+              <UsersRound className="size-4" />
+              Friends
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={scope === "global"}
+              onClick={() => {
+                if (scope === "global") {
+                  void refreshGlobal();
+                } else {
+                  setScope("global");
+                  setGlobalLoading(true);
+                }
+              }}
+              className={`flex h-10 items-center justify-center gap-2 rounded-xl text-sm font-medium transition-colors ${
+                scope === "global"
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground"
+              }`}
+            >
+              <Globe2 className="size-4" />
+              Global
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Mobile content */}
+      <main className="flex flex-col gap-5 px-4 pb-6 pt-4 md:hidden">
+        <section
+          aria-label="Your leaderboard summary"
+          className="relative overflow-hidden rounded-3xl bg-primary p-4 text-primary-foreground shadow-sm"
+        >
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-10 -top-16 size-40 rounded-full bg-primary-foreground/10 blur-2xl"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -bottom-20 -left-12 size-40 rounded-full bg-primary-foreground/10 blur-2xl"
+          />
+          <div className="relative flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.12em] text-primary-foreground/75">
+                {scope === "global" ? "Your global score" : "Your score"} · 30d
+              </p>
+              <p className="mt-1 font-heading text-4xl font-semibold leading-none tabular-nums">
+                {displayedOwnScore?.score == null
+                  ? "—"
+                  : displayedOwnScore.score.toFixed(1)}
+                <span className="ml-1 text-sm font-normal text-primary-foreground/70">
+                  / 100
+                </span>
+              </p>
+            </div>
+            <div className="shrink-0 rounded-2xl bg-primary-foreground/15 px-3 py-2 text-center">
+              <p className="text-[10px] uppercase tracking-widest text-primary-foreground/70">
+                Rank
+              </p>
+              <p className="font-heading text-xl font-bold leading-tight tabular-nums">
+                {myActiveRank ? `#${myActiveRank}` : "—"}
+              </p>
+              <p className="text-[10px] text-primary-foreground/70">
+                {totalActiveParticipants
+                  ? `of ${totalActiveParticipants.toLocaleString()}`
+                  : ""}
+              </p>
+            </div>
+          </div>
+          <div
+            className="relative mt-4 h-2 overflow-hidden rounded-full bg-primary-foreground/20"
+            role="progressbar"
+            aria-label="Your leaderboard score"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(ownScorePercentage)}
+          >
+            <div
+              className="h-full rounded-full bg-primary-foreground transition-[width]"
+              style={{ width: `${ownScorePercentage}%` }}
+            />
+          </div>
+          <p className="relative mt-2 text-[11px] leading-relaxed text-primary-foreground/75">
+            {displayedOwnScore?.score == null
+              ? "Complete tasks to establish your score."
+              : scope === "global"
+                ? "All signed-in members with recent task activity."
+                : "You versus the friends in your circle."}
+          </p>
+        </section>
+
+        {podiumEntries.length > 0 && (
+          <section aria-label="Top of the leaderboard">
+            <div className="mb-2 flex items-end justify-between gap-3">
+              <div>
+                <h2 className="font-heading text-base font-semibold">
+                  Top of the board
+                </h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {scope === "global"
+                    ? "Across the Taskito community"
+                    : "The leaders in your circle"}
+                </p>
+              </div>
+              <Badge variant="outline">30 days</Badge>
+            </div>
+            <div className="rounded-3xl border border-border/70 bg-card p-5">
+              <div className="grid grid-cols-3 items-end gap-3">
+                {[
+                  {
+                    entry: podiumEntries[1],
+                    place: 2,
+                    bar: "h-20",
+                    avatar: "size-14",
+                    ring: "ring-slate-300 dark:ring-slate-500/60",
+                  },
+                  {
+                    entry: podiumEntries[0],
+                    place: 1,
+                    bar: "h-32",
+                    avatar: "size-16",
+                    ring: "ring-amber-400",
+                  },
+                  {
+                    entry: podiumEntries[2],
+                    place: 3,
+                    bar: "h-16",
+                    avatar: "size-14",
+                    ring: "ring-orange-400",
+                  },
+                ].map(({ entry, place, bar, avatar, ring }) =>
+                  entry ? (
+                    <div
+                      key={entry.id}
+                      className="flex min-w-0 flex-col items-center"
+                      aria-label={`${place === 1 ? "1st" : place === 2 ? "2nd" : "3rd"} place: ${entry.name}`}
+                    >
+                      <Avatar
+                        className={`${avatar} shrink-0 bg-primary/10 font-semibold text-primary ring-2 ring-offset-2 ring-offset-card ${ring}`}
+                      >
+                        <AvatarFallback>
+                          {initials(entry.name) || "U"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <p className="mt-2 w-full truncate text-center text-[13px] font-semibold">
+                        {entry.name}
+                      </p>
+                      <p className="text-xs font-semibold tabular-nums text-primary">
+                        {entry.score}
+                      </p>
+                      <div
+                        className={`mt-2 flex w-full items-end justify-center rounded-t-xl border-x border-t px-2 pt-2 ${bar} ${
+                          place === 1
+                            ? "border-primary/25 bg-primary/10"
+                            : "border-border bg-muted/50"
+                        }`}
+                        aria-hidden="true"
+                      >
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                          {place === 1 ? "1st" : place === 2 ? "2nd" : "3rd"}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={`empty-${place}`} aria-hidden="true" />
+                  )
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        <section aria-labelledby="mobile-rankings-heading">
+          <div className="mb-2 flex items-end justify-between gap-3">
+            <div>
+              <h2
+                id="mobile-rankings-heading"
+                className="font-heading text-base font-semibold"
+              >
+                {scope === "global" ? "Global ranking" : "Friends ranking"}
+              </h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {scope === "global"
+                  ? "Top 100 members and your position"
+                  : "Every friend with a score, highest first"}
+              </p>
+            </div>
+            <Badge variant="outline">
+              {scope === "global" ? "Global" : "Friends"}
+            </Badge>
+          </div>
+
+          {activeLoading ? (
+            <ul
+              className="space-y-2"
+              role="status"
+              aria-label="Loading leaderboard"
+            >
+              {Array.from({ length: 5 }, (_, index) => (
+                <li
+                  key={index}
+                  className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card p-3"
+                  aria-hidden="true"
+                >
+                  <Skeleton className="size-8 shrink-0 rounded-xl" />
+                  <Skeleton className="size-10 shrink-0 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-28 max-w-full" />
+                    <Skeleton className="h-3 w-36 max-w-full" />
+                  </div>
+                  <Skeleton className="h-7 w-10 shrink-0 rounded-md" />
+                </li>
+              ))}
+              <span className="sr-only">Loading leaderboard</span>
+            </ul>
+          ) : activeError ? (
+            <div
+              role="alert"
+              className="rounded-2xl border border-destructive/20 bg-destructive/5 p-4"
+            >
+              <p className="text-sm text-destructive">{activeError}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3 h-10 w-full rounded-xl"
+                onClick={() => {
+                  if (scope === "global") {
+                    void refreshGlobal();
+                  } else {
+                    setLoading(true);
+                    void refresh();
+                  }
+                }}
+              >
+                Try again
+              </Button>
+            </div>
+          ) : activeRankedParticipants.length ? (
+            <ul className="space-y-2">
+              {activeRankedParticipants.map((participant) => {
+                const rank = participant.rank;
+                const topStyle =
+                  rank && rank <= 3
+                    ? MOBILE_RANK_STYLES[rank - 1]
+                    : "border-border/70 bg-muted/40 text-muted-foreground";
+                const score = participant.score.score;
+
+                return (
+                  <li
+                    key={participant.id}
+                    className={`rounded-2xl border p-3 ${
+                      participant.isYou
+                        ? "border-primary/40 bg-primary/[0.04]"
+                        : "border-border/70 bg-card"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`grid size-8 shrink-0 place-items-center rounded-xl border text-xs font-bold tabular-nums ${topStyle}`}
+                        aria-label={
+                          rank ? `Rank ${rank}` : "Unranked"
+                        }
+                      >
+                        {rank ?? "—"}
+                      </span>
+                      <Avatar className="size-10 shrink-0 bg-primary/10 text-primary">
+                        <AvatarFallback>
+                          {initials(participant.name) || "U"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
+                          <span className="truncate">{participant.name}</span>
+                          {participant.isYou && (
+                            <span className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                              You
+                            </span>
+                          )}
+                        </p>
+                        <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-muted-foreground">
+                          <span>
+                            Completion{" "}
+                            {formatRate(participant.score.completion_rate)}
+                          </span>
+                          <span
+                            className="size-0.5 rounded-full bg-border"
+                            aria-hidden="true"
+                          />
+                          <span>
+                            Consistency{" "}
+                            {formatRate(participant.score.consistency_rate)}
+                          </span>
+                          <span
+                            className="size-0.5 rounded-full bg-border"
+                            aria-hidden="true"
+                          />
+                          <span>
+                            On-time {formatRate(participant.score.on_time_rate)}
+                          </span>
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="font-heading text-xl font-bold leading-none tabular-nums">
+                          {score === null ? "—" : score.toFixed(1)}
+                        </p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          / 100
+                        </p>
+                      </div>
+                    </div>
+                    <div
+                      className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-muted"
+                      role="progressbar"
+                      aria-label={`${participant.name} leaderboard score`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(score ?? 0)}
+                    >
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{
+                          width: `${Math.min(100, Math.max(0, score ?? 0))}%`,
+                        }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-border/80 bg-card/60 p-5 text-center">
+              <span className="mx-auto flex size-11 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground">
+                <ShieldCheck className="size-5" />
+              </span>
+              <p className="mt-3 text-sm font-medium">
+                {scope === "global"
+                  ? "No global scores yet"
+                  : "Your leaderboard is ready"}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {scope === "global"
+                  ? "Complete tasks to establish your score. Tasks and notes are never shared."
+                  : "Add friends to compare scores. Only aggregate rates are shared; tasks and notes stay private."}
+              </p>
+              {scope === "friends" && (
+                <Button
+                  nativeButton={false}
+                  render={<Link href="/friends" />}
+                  className="mt-4 h-10 w-full rounded-xl"
+                >
+                  Go to friends
+                </Button>
+              )}
+            </div>
+          )}
+        </section>
+
+        <details className="group rounded-2xl border border-border/70 bg-card">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 [&::-webkit-details-marker]:hidden">
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                <ShieldCheck className="size-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">
+                  How your score works
+                </span>
+                <span className="block text-[11px] text-muted-foreground">
+                  Completion, consistency, and on-time
+                </span>
+              </span>
+            </span>
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="border-t px-4 pb-4">
+            <p className="mt-3 break-words rounded-xl bg-muted/40 p-3 font-mono text-[10px] leading-relaxed">
+              Score = 100 × (0.5 × completion + 0.3 × consistency + 0.2 ×
+              on-time)
+            </p>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              All rates are proportions from 0 to 1, measured over a rolling
+              30-day window.
+            </p>
+            <div className="mt-2">
+              <Metric
+                label="Completion rate"
+                description="Completed task occurrences divided by task occurrences due."
+                rate={displayedOwnScore?.completion_rate ?? null}
+                weight="50%"
+                icon={CheckCircle2}
+              />
+              <Metric
+                label="Consistency rate"
+                description="Days with a completed task divided by days with tasks due."
+                rate={displayedOwnScore?.consistency_rate ?? null}
+                weight="30%"
+                icon={Target}
+              />
+              <Metric
+                label="On-time rate"
+                description="Tasks completed on or before their due date."
+                rate={displayedOwnScore?.on_time_rate ?? null}
+                weight="20%"
+                icon={Clock3}
+              />
+            </div>
+            <div className="flex gap-2 border-t pt-3 text-[11px] leading-relaxed text-muted-foreground">
+              <ShieldCheck className="mt-0.5 size-4 shrink-0" />
+              <p>
+                {scope === "global"
+                  ? "All signed-in members can see your aggregate rates and score. Your tasks and notes stay private."
+                  : "Your tasks and notes stay private. Friends see only your aggregate rates and score."}
+              </p>
+            </div>
+          </div>
+        </details>
+      </main>
+
+      {/* Desktop header */}
+      <header className="hidden min-h-20 flex-wrap items-center justify-between gap-3 border-b px-3 pb-3 pt-5 sm:px-4 md:flex md:px-6 lg:px-8">
         <div className="flex items-start gap-3">
           <Button
             variant="ghost"
@@ -339,7 +851,7 @@ export default function LeaderboardClientPage() {
               Leaderboard
             </h1>
             <p className="mt-0.5 text-xs text-muted-foreground sm:text-sm">
-              Compare friends or the Taskflow community.
+              Compare friends or the Taskito community.
             </p>
           </div>
         </div>
@@ -374,7 +886,7 @@ export default function LeaderboardClientPage() {
 
       <section
         aria-label="Leaderboard types"
-        className="grid grid-cols-1 border-b sm:grid-cols-2"
+        className="hidden grid-cols-1 border-b sm:grid-cols-2 md:grid"
       >
         <button
           type="button"
@@ -423,7 +935,7 @@ export default function LeaderboardClientPage() {
 
       <section
         aria-label="Your leaderboard summary"
-        className="grid border-b sm:grid-cols-3"
+        className="hidden border-b sm:grid-cols-3 md:grid"
       >
         {scope === "friends" ? (
           <>
@@ -516,7 +1028,7 @@ export default function LeaderboardClientPage() {
         )}
       </section>
 
-      <div className="grid min-w-0 flex-1 grid-rows-[auto_1fr] border-t xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)] xl:grid-rows-1">
+      <div className="hidden min-w-0 flex-1 grid-rows-[auto_1fr] border-t md:grid xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)] xl:grid-rows-1">
         <section className="flex min-w-0 flex-col border-b xl:border-b-0 xl:border-r">
           <div className="flex flex-col gap-2 border-b px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4 md:px-6 lg:px-8">
             <div>
@@ -572,17 +1084,7 @@ export default function LeaderboardClientPage() {
               </div>
             ) : activeRankedParticipants.length ? (
               <>
-                <LeaderboardPodium
-                  entries={activeRankedParticipants
-                    .filter((participant) => participant.score.score !== null)
-                    .slice(0, 3)
-                    .map((participant) => ({
-                      id: participant.id,
-                      name: participant.name,
-                      score: participant.score.score?.toFixed(1) ?? "—",
-                      detail: "/ 100",
-                    }))}
-                />
+                <LeaderboardPodium entries={podiumEntries} />
                 <ol className="flex flex-col">
                   {activeRankedParticipants.map((participant) => (
                     <li

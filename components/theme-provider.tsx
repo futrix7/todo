@@ -11,9 +11,24 @@ function ThemeColorSync() {
     if (!resolvedTheme) return
 
     const color = resolvedTheme === "dark" ? "#131313" : "#ffffff"
-    document
-      .querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')
-      .forEach((meta) => meta.setAttribute("content", color))
+    const syncThemeColor = () => {
+      document
+        .querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')
+        .forEach((meta) => {
+          if (meta.content !== color) meta.setAttribute("content", color)
+        })
+    }
+
+    syncThemeColor()
+    const observer = new MutationObserver(syncThemeColor)
+    observer.observe(document.head, {
+      attributes: true,
+      attributeFilter: ["content", "name"],
+      childList: true,
+      subtree: true,
+    })
+
+    return () => observer.disconnect()
   }, [resolvedTheme])
 
   return null

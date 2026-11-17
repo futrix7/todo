@@ -1,6 +1,6 @@
-# About Taskflow
+# About Taskito
 
-Taskflow is a personal productivity app that turns everyday tasks into a daily
+Taskito is a personal productivity app that turns everyday tasks into a daily
 habit. It combines a to-do list with advanced scheduling, streak tracking,
 daily mood check-ins, analytics, and a small social layer for friends and
 community challenges.
@@ -406,7 +406,7 @@ for signup verification. In **Authentication → Email Templates**, update both
 `{{ .Token }}`. For example:
 
 ```html
-<p>Your Taskflow verification code is <strong>{{ .Token }}</strong>.</p>
+<p>Your Taskito verification code is <strong>{{ .Token }}</strong>.</p>
 ```
 
 Supabase's default email service is intended for development: it restricts
@@ -420,7 +420,7 @@ current limitations.
 
 ### Theme modes
 
-Taskflow supports three appearance modes, available from the header toggle and
+Taskito supports three appearance modes, available from the header toggle and
 Settings:
 
 - **Light** — white background, near-black text, soft gray surfaces.
@@ -489,7 +489,7 @@ analytics. Icons are decorative where appropriate and labeled where interactive.
 
 ## Layout and navigation
 
-**Top bar.** Always visible and sticky. It contains the Taskflow logo, the
+**Top bar.** Always visible and sticky. It contains the Taskito logo, the
 current page title, a theme toggle, a notifications shortcut, and your avatar
 menu. On mobile, the title stays compact and the avatar hides your name.
 

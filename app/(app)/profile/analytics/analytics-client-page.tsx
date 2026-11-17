@@ -80,6 +80,10 @@ const CHART_COLORS = [
   "var(--chart-4)",
   "var(--chart-5)",
 ];
+const CHART_ANIMATION = {
+  animationDuration: 1400,
+  animationEasing: "ease-in-out" as const,
+};
 
 const activityConfig = {
   completed: { label: "Completed", color: "var(--chart-1)" },
@@ -301,7 +305,10 @@ export default function AnalyticsClientPage() {
     const counts = new Map<string, number>();
     for (const completion of rangeCompletions) {
       const task = taskById.get(completion.taskId);
-      if (task) counts.set(task.category, (counts.get(task.category) ?? 0) + 1);
+      if (task) {
+        const category = task.category || "Uncategorized";
+        counts.set(category, (counts.get(category) ?? 0) + 1);
+      }
     }
     return [...counts.entries()].map(([name, value], index) => ({
       name,
@@ -524,7 +531,7 @@ export default function AnalyticsClientPage() {
                   <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} minTickGap={28} />
                   <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Area type="monotone" dataKey="completed" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.14} strokeWidth={2.5} />
+                  <Area {...CHART_ANIMATION} type="monotone" dataKey="completed" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.14} strokeWidth={2.5} />
                 </AreaChart>
               </ChartContainer>
             ) : (
@@ -573,7 +580,7 @@ export default function AnalyticsClientPage() {
                       />
                     }
                   />
-                  <Bar dataKey="rating" radius={[5, 5, 0, 0]} barSize={18}>
+                  <Bar {...CHART_ANIMATION} dataKey="rating" radius={[5, 5, 0, 0]} barSize={18}>
                     {dayRatingData.map((entry) => (
                       <Cell
                         key={entry.date}
@@ -609,7 +616,7 @@ export default function AnalyticsClientPage() {
                 >
                   <PieChart>
                     <ChartTooltip content={<ChartTooltipContent nameKey="name" hideLabel />} />
-                    <Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={55} paddingAngle={4} stroke="none">
+                    <Pie {...CHART_ANIMATION} data={categoryData} dataKey="value" nameKey="name" innerRadius={55} paddingAngle={4} stroke="none">
                       {categoryData.map((item) => (
                         <Cell key={item.name} fill={item.fill} />
                       ))}
@@ -651,6 +658,7 @@ export default function AnalyticsClientPage() {
                   }
                 />
                 <Area
+                  {...CHART_ANIMATION}
                   type="monotone"
                   dataKey="consistency"
                   stroke="var(--chart-1)"
@@ -685,7 +693,7 @@ export default function AnalyticsClientPage() {
                 <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} />
                 <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="completed" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
+                <Bar {...CHART_ANIMATION} dataKey="completed" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ChartContainer>
           ) : (
@@ -706,8 +714,8 @@ export default function AnalyticsClientPage() {
                 <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} />
                 <ChartTooltip content={<ChartTooltipContent />} />
                 <ChartLegend content={<ChartLegendContent />} />
-                <Bar dataKey="lastWeek" fill="var(--chart-2)" radius={[4, 4, 0, 0]} barSize={12} />
-                <Bar dataKey="thisWeek" fill="var(--chart-1)" radius={[4, 4, 0, 0]} barSize={12} />
+                <Bar {...CHART_ANIMATION} dataKey="lastWeek" fill="var(--chart-2)" radius={[4, 4, 0, 0]} barSize={12} />
+                <Bar {...CHART_ANIMATION} dataKey="thisWeek" fill="var(--chart-1)" radius={[4, 4, 0, 0]} barSize={12} />
               </BarChart>
             </ChartContainer>
           ) : (
@@ -804,6 +812,7 @@ export default function AnalyticsClientPage() {
                             }
                           />
                           <Area
+                            {...CHART_ANIMATION}
                             type="monotone"
                             dataKey="consistency"
                             stroke="var(--chart-1)"

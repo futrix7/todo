@@ -7,7 +7,7 @@ import { useTheme } from "next-themes";
 import {
   Check,
   Bell,
-  ChevronRight,
+  MoreVertical,
   CalendarDays,
   BriefcaseBusiness,
   BookOpen,
@@ -88,6 +88,7 @@ import {
   Sprout,
   Star,
   Stethoscope,
+  Trash2,
   Target,
   Theater,
   Ticket,
@@ -149,6 +150,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { DailyCheckinReminder } from "@/components/daily-checkin-reminder";
 
@@ -232,7 +239,7 @@ function ThemeToggle() {
           <Button
             variant="ghost"
             size="icon"
-            className="size-10 rounded-xl"
+            className="size-9 rounded-xl"
             aria-label="Toggle theme"
             onClick={() => setTheme(dark ? "light" : "dark")}
           />
@@ -340,7 +347,7 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
   const [groups, setGroups] = React.useState<TaskGroup[]>([]);
   const [groupsLoading, setGroupsLoading] = React.useState(true);
   const [activeGroup, setActiveGroup] = React.useState("all");
-  const [width, setWidth] = React.useState(248);
+  const [width, setWidth] = React.useState(240);
   const [resizing, setResizing] = React.useState(false);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [editingGroup, setEditingGroup] = React.useState<TaskGroup | null>(null);
@@ -525,7 +532,7 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
     ? "Update the name or icon used to organize this group."
     : "Give related tasks a home. Choose a name and an icon.";
   const groupEditorFields = (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-5 py-4">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="task-group-name">Group name</Label>
         <Input
@@ -539,10 +546,10 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
           required
         />
       </div>
-      <fieldset className="flex min-h-0 flex-col gap-2">
+      <fieldset className="flex min-h-0 flex-1 flex-col gap-2">
         <legend className="text-sm font-medium">Choose an icon</legend>
         <div
-          className="group-icon-scroll-region grid max-h-44 grid-cols-6 gap-1 overflow-y-auto overscroll-contain rounded-lg border p-2 sm:grid-cols-8"
+          className="group-icon-scroll-region grid min-h-0 flex-1 grid-cols-6 gap-1 overflow-y-auto overscroll-contain rounded-lg border p-2 sm:grid-cols-8"
           role="radiogroup"
           aria-label="Choose a group icon"
         >
@@ -601,20 +608,20 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
   return (
     <aside
       ref={sidebarRef}
-      className="relative w-full shrink-0 border-b bg-sidebar/40 px-2 pt-2 pb-0 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:max-h-dvh lg:w-[var(--task-groups-width)] lg:basis-[var(--task-groups-width)] lg:flex-col lg:overflow-hidden lg:border-b-0 lg:border-r lg:bg-sidebar lg:px-3 lg:py-4"
+      className="relative w-full shrink-0 border-b bg-sidebar/40 px-2 pt-2 pb-1.5 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:max-h-dvh lg:w-[var(--task-groups-width)] lg:basis-[var(--task-groups-width)] lg:flex-col lg:overflow-hidden lg:border-b-0 lg:border-r lg:bg-sidebar lg:px-2 lg:py-3"
       style={{ "--task-groups-width": `${width}px` } as React.CSSProperties}
     >
       <div className="mb-2 flex min-h-9 w-full shrink-0 items-center gap-2 px-1.5 lg:hidden">
         <Link
           href="/tasks"
-          aria-label="Taskflow — tasks"
+          aria-label="Taskito — tasks"
           className="flex min-w-0 items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Check className="size-4" strokeWidth={3} />
           </span>
           <span className="truncate font-heading text-sm font-semibold">
-            Taskflow
+            Taskito
           </span>
         </Link>
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
@@ -639,54 +646,103 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
       <nav
         id="task-group-links"
         aria-label="Task groups"
-        className="sidebar-scroll-region flex gap-1 overflow-x-auto lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-contain"
+        className="sidebar-scroll-region flex gap-1 overflow-x-auto lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-1 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-contain"
       >
           {links.map((link) => {
             const Icon = link.icon;
             const href = `/tasks#group=${encodeURIComponent(link.id)}`;
             const active = activeGroup === link.id;
+            const group =
+              link.id === "all" || link.id === "ungrouped"
+                ? undefined
+                : groups.find((item) => item.id === link.id);
 
             return (
-              <Link
+              <div
                 key={link.id}
-                href={href}
-                onClick={(event) => {
-                  if (
-                    event.defaultPrevented ||
-                    event.button !== 0 ||
-                    event.metaKey ||
-                    event.ctrlKey ||
-                    event.shiftKey ||
-                    event.altKey
-                  ) {
-                    return;
-                  }
-                  setActiveGroup(link.id);
-                  window.dispatchEvent(
-                    new CustomEvent("task-group-selected", {
-                      detail: link.id,
-                    })
-                  );
-                }}
-                aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex min-h-9 shrink-0 items-center gap-2.5 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:min-h-10 lg:w-full",
+                  "group/group-row flex min-h-9 shrink-0 items-center rounded-lg text-[13px] font-medium transition-colors lg:w-full",
                   active
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 )}
               >
-                <Icon className="size-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{link.label}</span>
-                <ChevronRight className="ml-auto hidden size-3 opacity-50 lg:block" />
-              </Link>
+                <Link
+                  href={href}
+                  onClick={(event) => {
+                    if (
+                      event.defaultPrevented ||
+                      event.button !== 0 ||
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    ) {
+                      return;
+                    }
+                    setActiveGroup(link.id);
+                    window.dispatchEvent(
+                      new CustomEvent("task-group-selected", {
+                        detail: link.id,
+                      })
+                    );
+                  }}
+                  aria-current={active ? "page" : undefined}
+                  className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Icon className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{link.label}</span>
+                </Link>
+                {group && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          aria-label={`${group.name} group actions`}
+                          className="mr-1 shrink-0 rounded-md text-muted-foreground transition-opacity hover:bg-sidebar-accent hover:text-sidebar-accent-foreground lg:opacity-0 lg:group-hover/group-row:opacity-100 lg:group-focus-within/group-row:opacity-100"
+                        />
+                      }
+                    >
+                      <MoreVertical className="size-3.5" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() =>
+                          window.dispatchEvent(
+                            new CustomEvent("task-group-edit-requested", {
+                              detail: group,
+                            })
+                          )
+                        }
+                      >
+                        <Pencil /> Edit group
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() =>
+                          window.dispatchEvent(
+                            new CustomEvent("task-group-delete-requested", {
+                              detail: group,
+                            })
+                          )
+                        }
+                      >
+                        <Trash2 /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
             );
           })}
           {groupsLoading &&
             Array.from({ length: 3 }, (_, index) => (
               <div
                 key={`group-skeleton-${index}`}
-                className="flex min-h-10 shrink-0 items-center gap-2.5 rounded-md px-3 lg:w-full"
+                className="flex min-h-9 shrink-0 items-center gap-2 rounded-lg px-2.5 lg:w-full"
                 aria-hidden="true"
               >
                 <Skeleton className="size-4 shrink-0 rounded-sm" />
@@ -700,7 +756,7 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
         aria-haspopup="dialog"
         disabled={savingGroup}
         onClick={openCreateGroup}
-        className="mt-2 hidden min-h-10 w-full shrink-0 justify-start gap-2.5 rounded-md px-3 text-sm font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground lg:flex"
+        className="mt-2 hidden min-h-9 w-full shrink-0 justify-start gap-2 rounded-lg px-2.5 text-[13px] font-normal text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground lg:flex"
       >
         <Plus className="size-3.5 shrink-0" />
         Create a group
@@ -711,7 +767,14 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
           onOpenChange={handleGroupEditorOpenChange}
           swipeDirection="down"
         >
-          <DrawerContent className="max-h-[min(90dvh,46rem)]">
+          <DrawerContent
+            style={
+              {
+                "--drawer-height": "80dvh",
+                "--drawer-content-max-height": "80dvh",
+              } as React.CSSProperties
+            }
+          >
             <DrawerHeader>
               <DrawerTitle>{groupEditorTitle}</DrawerTitle>
               <DrawerDescription>{groupEditorDescription}</DrawerDescription>
@@ -728,8 +791,8 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
         </Drawer>
       ) : (
         <Dialog open={createOpen} onOpenChange={handleGroupEditorOpenChange}>
-          <DialogContent className="max-w-lg gap-0 p-0 sm:max-w-lg">
-            <DialogHeader className="px-5 pb-4 pt-5">
+          <DialogContent className="h-[min(90dvh,46rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-lg">
+            <DialogHeader className="px-5 pb-3 pt-4">
               <DialogTitle>{groupEditorTitle}</DialogTitle>
               <DialogDescription>{groupEditorDescription}</DialogDescription>
             </DialogHeader>
@@ -739,7 +802,7 @@ function TaskGroupSidebar({ pathname }: { pathname: string }) {
               className="flex min-h-0 flex-1 flex-col"
             >
               {groupEditorFields}
-              <DialogFooter className="px-5 pt-3 pb-5">
+              <DialogFooter className="px-5 pt-2 pb-4">
                 {groupEditorActions}
               </DialogFooter>
             </form>
@@ -843,21 +906,21 @@ function DesktopSidebar({ pathname }: { pathname: string }) {
   }, [reportError, user?.id]);
 
   return (
-    <aside className="sticky top-0 hidden h-dvh max-h-dvh w-14 shrink-0 flex-col items-center overflow-hidden border-r bg-sidebar py-3 text-sidebar-foreground md:flex lg:w-16">
+    <aside className="sticky top-0 hidden h-dvh max-h-dvh w-[3.25rem] shrink-0 flex-col items-center overflow-hidden border-r bg-sidebar py-2.5 text-sidebar-foreground md:flex lg:w-[3.75rem]">
       <div className="flex shrink-0 flex-col items-center">
         <Tooltip>
           <TooltipTrigger
             render={
               <Link
                 href="/tasks"
-                aria-label="Taskflow — tasks"
-                className="mb-5 flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Taskito — tasks"
+                className="mb-4 flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             }
           >
             <Check className="size-5 shrink-0" strokeWidth={3} />
           </TooltipTrigger>
-          <TooltipContent side="right">Taskflow</TooltipContent>
+          <TooltipContent side="right">Taskito</TooltipContent>
         </Tooltip>
       </div>
 
@@ -877,7 +940,7 @@ function DesktopSidebar({ pathname }: { pathname: string }) {
                     aria-current={active ? "page" : undefined}
                     aria-label={item.label}
                     className={cn(
-                      "flex size-10 shrink-0 items-center justify-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "flex size-9 shrink-0 items-center justify-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       active
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -885,7 +948,7 @@ function DesktopSidebar({ pathname }: { pathname: string }) {
                   />
                 }
               >
-                <Icon className="size-[19px] shrink-0" />
+                <Icon className="size-[18px] shrink-0" />
               </TooltipTrigger>
               <TooltipContent side="right" align="center">
                 {item.label}
@@ -908,14 +971,14 @@ function DesktopSidebar({ pathname }: { pathname: string }) {
                 }
                 aria-current={pathname === "/notifications" ? "page" : undefined}
                 className={cn(
-                  "relative flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "relative flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   pathname === "/notifications" &&
                     "bg-sidebar-accent text-sidebar-accent-foreground"
                 )}
               />
             }
           >
-            <Bell className="size-[19px]" />
+            <Bell className="size-[18px]" />
             {unreadNotificationCount > 0 && (
               <Badge
                 aria-hidden="true"
@@ -942,7 +1005,7 @@ function DesktopSidebar({ pathname }: { pathname: string }) {
                 href="/profile"
                 aria-label="Profile"
                 className={cn(
-                  "flex size-10 items-center justify-center rounded-xl transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "flex size-9 items-center justify-center rounded-xl transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   isActive(pathname, "/profile") && "bg-sidebar-accent"
                 )}
               />
@@ -988,7 +1051,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               !isCalendarPage &&
               "px-3 py-4 pb-24 sm:px-4 sm:py-6 sm:pb-24 md:px-6 md:py-8 md:pb-8 lg:px-8 lg:py-6",
             isTasksPage &&
-              "px-2 pt-0 pb-[calc(4rem_+_env(safe-area-inset-bottom))] sm:px-3 sm:pb-[calc(4rem_+_env(safe-area-inset-bottom))] md:px-5 md:pb-8 lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden lg:px-6 lg:py-5",
+              "px-2 pt-0 pb-[calc(4rem_+_env(safe-area-inset-bottom))] sm:px-3 sm:pb-[calc(4rem_+_env(safe-area-inset-bottom))] md:px-5 md:pb-8 lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden lg:px-6 lg:pt-0 lg:pb-0",
             isCalendarPage &&
               "p-0 pb-24 md:pb-0 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden"
           )}

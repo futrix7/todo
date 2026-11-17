@@ -46,6 +46,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { FadeIn } from "@/components/motion-fade";
 import { useMounted } from "@/lib/use-local-storage";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InstallAppButton } from "@/components/pwa-install-prompt";
 
 function initials(name: string) {
   return name
@@ -341,6 +342,20 @@ export default function SettingsPage() {
         </FadeIn>
 
         <FadeIn delay={0.2} className="h-full md:col-span-2">
+          <SettingsCard
+            title="Install Taskito"
+            description="Add Taskito to your home screen or desktop for quick access."
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Your browser will confirm before saving the app to this device.
+              </p>
+              <InstallAppButton className="shrink-0" />
+            </div>
+          </SettingsCard>
+        </FadeIn>
+
+        <FadeIn delay={0.24} className="h-full md:col-span-2">
           <SettingsCard
             title="Data & privacy"
             description="Manage the data stored in your account."

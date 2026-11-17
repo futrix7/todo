@@ -1,4 +1,4 @@
--- Taskflow database schema for Supabase.
+-- Taskito database schema for Supabase.
 -- Safe to re-run: tables, policies, triggers, and functions are recreated in place.
 
 begin;
@@ -368,7 +368,7 @@ begin
   profile_name := coalesce(
     nullif(btrim(new.raw_user_meta_data ->> 'name'), ''),
     nullif(split_part(coalesce(new.email, ''), '@', 1), ''),
-    'Taskflow user'
+    'Taskito user'
   );
   profile_slug := btrim(
     regexp_replace(lower(profile_name), '[^a-z0-9]+', '-', 'g'),
@@ -401,7 +401,7 @@ select
   coalesce(
     nullif(btrim(users.raw_user_meta_data ->> 'name'), ''),
     nullif(split_part(coalesce(users.email, ''), '@', 1), ''),
-    'Taskflow user'
+    'Taskito user'
   ),
   coalesce(
     nullif(

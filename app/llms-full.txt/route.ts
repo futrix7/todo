@@ -1,8 +1,8 @@
 export async function GET() {
-  const text = `# Taskflow
+  const text = `# Taskito
 
-## What is Taskflow?
-Taskflow is a task and habit tracking workspace designed to help people plan their day, build routines, and monitor progress over time.
+## What is Taskito?
+Taskito is a task and habit tracking workspace designed to help people plan their day, build routines, and monitor progress over time.
 
 ## Core features
 - Task planning and prioritization

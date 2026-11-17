@@ -47,7 +47,7 @@ export default function OpenGraphImage() {
           >
             T
           </div>
-          <div style={{ fontSize: 32, fontWeight: 700 }}>Taskflow</div>
+          <div style={{ fontSize: 32, fontWeight: 700 }}>Taskito</div>
         </div>
         <div style={{ fontSize: 72, fontWeight: 700, letterSpacing: -2, lineHeight: 1.05 }}>
           Plan your day. Build better habits.
