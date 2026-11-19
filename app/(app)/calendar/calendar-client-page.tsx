@@ -393,7 +393,7 @@ export default function CalendarClientPage() {
 
           {/* Days */}
           <div
-            className="grid min-h-0 flex-1 grid-cols-7 overflow-y-auto border-l border-border/60 [grid-template-rows:repeat(var(--week-count),minmax(5.5rem,1fr))] lg:[grid-template-rows:repeat(var(--week-count),minmax(7.5rem,1fr))]"
+            className="app-scroll-region grid min-h-0 flex-1 grid-cols-7 overflow-y-auto border-l border-border/60 [grid-template-rows:repeat(var(--week-count),minmax(5.5rem,1fr))] lg:[grid-template-rows:repeat(var(--week-count),minmax(7.5rem,1fr))]"
             style={
               {
                 "--week-count": Math.max(1, dates.length / 7),

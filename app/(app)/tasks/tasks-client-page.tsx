@@ -439,7 +439,7 @@ function TaskDetails({
           )}
           <div
             className={cn(
-              "flex-1 space-y-5 overflow-y-auto overscroll-contain p-4",
+              "app-scroll-region flex-1 space-y-5 overflow-y-auto overscroll-contain p-4",
               presentation === "drawer" &&
                 "pb-[max(1rem,env(safe-area-inset-bottom))]"
             )}
@@ -1541,7 +1541,7 @@ export default function TasksClientPage() {
       <div
         ref={taskListScrollRef}
         className={cn(
-          "min-w-0 pb-2 transition-opacity duration-150 ease-out lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1",
+          "app-scroll-region min-w-0 pb-2 transition-opacity duration-150 ease-out lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1",
           (isFilterPending || deferredTaskSearch !== taskSearch) &&
             "opacity-60"
         )}

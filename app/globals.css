@@ -82,6 +82,11 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --scrollbar-size: 10px;
+  --scrollbar-thumb: color-mix(in oklch, var(--foreground) 30%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--foreground) 46%, transparent);
+  --scrollbar-thumb-active: color-mix(in oklch, var(--foreground) 60%, transparent);
+  --scrollbar-track: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
 .dark {
@@ -117,6 +122,10 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --scrollbar-thumb: color-mix(in oklch, var(--foreground) 32%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--foreground) 50%, transparent);
+  --scrollbar-thumb-active: color-mix(in oklch, var(--foreground) 66%, transparent);
+  --scrollbar-track: color-mix(in oklch, var(--foreground) 7%, transparent);
 }
 
 @layer base {
@@ -131,33 +140,48 @@
   }
   html {
     @apply font-sans;
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in oklch, var(--muted-foreground) 35%, transparent) transparent;
+    scrollbar-gutter: stable;
   }
-  body {
-    scrollbar-width: thin;
-  }
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in oklch, var(--muted-foreground) 32%, transparent) transparent;
+  /*
+   * Scrollbars: slim and rounded, but always visible with clear hover/active
+   * feedback. Standard properties are only used where ::-webkit-scrollbar is
+   * unsupported (Firefox), because Chromium ignores the pseudo-elements when
+   * scrollbar-width/color are present.
+   */
+  @supports not selector(::-webkit-scrollbar) {
+    html,
+    body,
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    }
   }
   *::-webkit-scrollbar {
-    display: block;
-    width: 8px;
-    height: 8px;
+    width: var(--scrollbar-size);
+    height: var(--scrollbar-size);
   }
   *::-webkit-scrollbar-track {
-    background: transparent;
+    border-radius: 999px;
+    background-color: var(--scrollbar-track);
   }
   *::-webkit-scrollbar-thumb {
-    border-radius: 999px;
-    background: color-mix(in oklch, var(--muted-foreground) 35%, transparent);
+    min-height: 2.5rem;
     border: 2px solid transparent;
+    border-radius: 999px;
+    background-color: var(--scrollbar-thumb);
     background-clip: padding-box;
+    transition: background-color 150ms ease-out;
   }
   *::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+    background-color: var(--scrollbar-thumb-hover);
     background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:active {
+    background-color: var(--scrollbar-thumb-active);
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
 
@@ -265,86 +289,26 @@ select:-webkit-autofill {
   }
 }
 
+/*
+ * Named scroll regions share the global scrollbar theme; only the track width
+ * is tuned per surface. Gutter reservation prevents layout shift when content
+ * grows past the viewport. Thumb colors stay centralized in the base layer.
+ */
+.app-scroll-region {
+  --scrollbar-size: 10px;
+  scrollbar-gutter: stable;
+}
+
 .friends-scroll-region {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 40%, transparent) transparent;
-}
-
-.friends-scroll-region::-webkit-scrollbar {
-  display: block;
-  width: 6px;
-}
-
-.friends-scroll-region::-webkit-scrollbar-track {
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--muted) 55%, transparent);
-}
-
-.friends-scroll-region::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--muted-foreground) 58%, transparent);
+  --scrollbar-size: 10px;
+  scrollbar-gutter: stable;
 }
 
 .group-icon-scroll-region {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 40%, transparent) transparent;
-}
-
-.group-icon-scroll-region::-webkit-scrollbar {
-  display: block;
-  width: 6px;
-}
-
-.group-icon-scroll-region::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
+  --scrollbar-size: 8px;
 }
 
 .sidebar-scroll-region {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 35%, transparent) transparent;
+  --scrollbar-size: 8px;
 }
 
-.sidebar-scroll-region::-webkit-scrollbar {
-  display: block;
-  width: 4px;
-  height: 4px;
-}
-
-.sidebar-scroll-region::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.sidebar-scroll-region::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--muted-foreground) 35%, transparent);
-}
-
-.sidebar-scroll-region:hover {
-  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 55%, transparent) transparent;
-}
-
-.app-scroll-region {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 30%, transparent) transparent;
-}
-
-.app-scroll-region::-webkit-scrollbar {
-  display: block;
-  width: 8px;
-}
-
-.app-scroll-region::-webkit-scrollbar-track {
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--background) 10%, transparent);
-}
-
-.app-scroll-region::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background-color: color-mix(in oklch, var(--muted-foreground) 40%, var(--primary));
-  border: 2px solid transparent;
-}
-
-.app-scroll-region:hover::-webkit-scrollbar-thumb {
-  background-color: color-mix(in oklch, var(--muted-foreground) 50%, var(--primary));
-}

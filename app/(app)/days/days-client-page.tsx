@@ -3,6 +3,7 @@
 import * as React from "react";
 import { motion } from "framer-motion";
 import {
+  BarChart3,
   CalendarDays,
   CheckCircle2,
   Pencil,
@@ -23,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -67,10 +69,27 @@ const moodConfig = {
 } satisfies ChartConfig;
 
 const distributionConfig = {
-  count: { label: "Days", color: "var(--chart-2)" },
+  count: { label: "Days", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
-const RATING_LABELS = ["Very hard", "Hard", "Okay", "Good", "Great"] as const;
+const DAY_MS = 86_400_000;
+
+/** Compact, human date for the recent check-in list. */
+function recentDateLabel(key: string, today: string): string {
+  const date = new Date(`${key}T12:00:00`);
+  const current = new Date(`${today}T12:00:00`);
+  const dayDiff = Math.round((current.getTime() - date.getTime()) / DAY_MS);
+  if (dayDiff === 0) return "Today";
+  if (dayDiff === 1) return "Yesterday";
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() !== current.getFullYear()
+      ? { year: "numeric" }
+      : {}),
+  }).format(date);
+}
 
 export default function DaysClientPage() {
   const { user } = useAuth();
@@ -141,10 +160,11 @@ export default function DaysClientPage() {
       rating: getDayRatingScore(entry.rating),
     }));
 
-  const distribution = [1, 2, 3, 4, 5].map((score) => ({
-    label: String(score),
+  const distribution = MOODS.map((mood, index) => ({
+    label: mood.emoji,
+    name: mood.label,
     count: entries.filter(
-      (entry) => getDayRatingScore(entry.rating) === score
+      (entry) => getDayRatingScore(entry.rating) === index + 1
     ).length,
   }));
 
@@ -162,6 +182,7 @@ export default function DaysClientPage() {
   const ratingScore =
     rating === undefined ? undefined : getDayRatingScore(rating);
   const selectedScore = ratingScore ?? mood;
+  const selectedMood = MOODS.find((item) => item.value === selectedScore);
 
   async function handleSave() {
     if (!today || mood === undefined || rating === undefined) {
@@ -218,17 +239,17 @@ export default function DaysClientPage() {
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-5 sm:gap-6">
-      <header className="flex flex-col gap-4 border-b border-border/70 pb-5 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+    <div className="flex w-full min-w-0 flex-col gap-4 sm:gap-6">
+      <header className="flex flex-col gap-4 border-b border-border/70 pb-4 sm:flex-row sm:items-center sm:justify-between sm:pb-5">
         <div className="flex items-start gap-3">
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
-            <SmilePlus className="size-6" aria-hidden="true" />
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20 sm:size-12">
+            <SmilePlus className="size-5 sm:size-6" aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
               Daily reflection
             </p>
-            <h1 className="mt-1 font-heading text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
+            <h1 className="mt-0.5 font-heading text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
               Days
             </h1>
             <p className="mt-1 max-w-xl text-sm leading-relaxed text-muted-foreground">
@@ -237,13 +258,15 @@ export default function DaysClientPage() {
           </div>
         </div>
         {today && (
-          <div className="flex shrink-0 items-center gap-3 rounded-xl border border-border/70 bg-card/80 px-4 py-3 shadow-sm">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-              <CalendarDays className="size-5" aria-hidden="true" />
+          <div className="flex w-fit shrink-0 items-center gap-2.5 self-start rounded-xl border border-border/70 bg-card/80 px-3 py-2 shadow-sm sm:self-auto sm:px-4 sm:py-2.5">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+              <CalendarDays className="size-4" aria-hidden="true" />
             </span>
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Today</p>
-              <p className="mt-0.5 text-sm font-semibold">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Today
+              </p>
+              <p className="text-sm font-semibold leading-tight">
                 {longDateLabel(today)}
               </p>
             </div>
@@ -283,7 +306,7 @@ export default function DaysClientPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-3 lg:items-start">
         {/* Check-in */}
         <FadeIn className="lg:col-span-2">
           <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
@@ -307,7 +330,7 @@ export default function DaysClientPage() {
                 ) : todaysDraft ? (
                   <Badge variant="outline">Unsaved changes</Badge>
                 ) : (
-                  <Badge variant="outline">Not logged yet</Badge>
+                  <Badge variant="outline">Not checked in</Badge>
                 )}
               </div>
             </CardHeader>
@@ -320,14 +343,17 @@ export default function DaysClientPage() {
                       Choose the emoji that best matches how today felt.
                     </p>
                   </div>
-                  {selectedScore !== undefined && (
-                    <span className="text-sm font-medium text-muted-foreground">
-                      {MOODS.find((item) => item.value === selectedScore)?.emoji}{" "}
-                      {RATING_LABELS[selectedScore - 1]}
+                  {selectedMood && (
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary ring-1 ring-primary/20"
+                      aria-live="polite"
+                    >
+                      <span aria-hidden>{selectedMood.emoji}</span>
+                      {selectedMood.label}
                     </span>
                   )}
                 </div>
-                <div className="grid grid-cols-5 gap-2.5 sm:gap-3">
+                <div className="grid grid-cols-5 gap-1.5 sm:gap-2.5">
                   {MOODS.map((m) => {
                     const active = selectedScore === m.value;
                     return (
@@ -338,21 +364,26 @@ export default function DaysClientPage() {
                           updateDraft({ mood: m.value, rating: m.value })
                         }
                         whileTap={{ scale: 0.9 }}
-                        animate={active ? { scale: 1.06 } : { scale: 1 }}
+                        animate={active ? { scale: 1.04 } : { scale: 1 }}
                         transition={{ type: "spring", bounce: 0.4, duration: 0.4 }}
                         className={cn(
-                          "flex min-h-[82px] flex-col items-center justify-center gap-1.5 rounded-xl border p-2 text-2xl transition-colors active:scale-[0.97] sm:min-h-[92px] sm:p-3",
+                          "flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-xl border p-1.5 transition-colors active:scale-[0.97] sm:min-h-[88px] sm:gap-1.5 sm:p-3",
                           active
-                            ? "border-primary bg-primary/10 ring-2 ring-primary/40"
-                            : "bg-background hover:bg-muted"
+                            ? "border-primary bg-primary/10 shadow-sm ring-2 ring-primary/30"
+                            : "border-border/80 bg-background hover:border-foreground/20 hover:bg-muted/60"
                         )}
                         aria-pressed={active}
                         aria-label={m.label}
                       >
-                        <span aria-hidden className="leading-none">{m.emoji}</span>
+                        <span
+                          aria-hidden
+                          className="text-xl leading-none sm:text-2xl"
+                        >
+                          {m.emoji}
+                        </span>
                         <span
                           className={cn(
-                            "text-xs font-medium",
+                            "text-[10px] font-medium leading-tight sm:text-xs",
                             active ? "text-foreground" : "text-muted-foreground"
                           )}
                         >
@@ -371,13 +402,13 @@ export default function DaysClientPage() {
                   id="day-note"
                   rows={4}
                   value={note}
-                  placeholder="Enter your notes here..."
+                  placeholder="What stood out today? Wins, blockers, or something to remember."
                   onChange={(e) => updateDraft({ note: e.target.value })}
-                  className="min-h-[120px] resize-y"
+                  className="min-h-[112px] resize-y sm:min-h-[128px]"
                 />
               </div>
 
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <div className="flex flex-col-reverse gap-2 border-t border-border/60 pt-4 sm:flex-row sm:justify-end">
                 <Button
                   variant="ghost"
                   className="w-full sm:w-auto"
@@ -399,16 +430,16 @@ export default function DaysClientPage() {
 
         {/* Summary */}
         <FadeIn delay={0.08}>
-          <Card className="h-full rounded-2xl border-border/70 bg-card/80 shadow-sm">
-            <CardHeader className="pb-4">
+          <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
+            <CardHeader>
               <div className="flex items-center justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <CardTitle className="flex items-center gap-2">
                     <CalendarDays className="size-4 text-primary" /> Check-in overview
                   </CardTitle>
-                  <p className="mt-1 text-sm text-muted-foreground">
+                  <CardDescription className="mt-1">
                     Your saved reflections
-                  </p>
+                  </CardDescription>
                 </div>
                 <Badge variant="secondary" className="shrink-0">
                   {entries.length} {entries.length === 1 ? "day" : "days"}
@@ -416,23 +447,26 @@ export default function DaysClientPage() {
               </div>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-              <div className="flex items-center justify-around rounded-xl bg-muted/50 p-3 sm:p-4">
+              <div className="grid grid-cols-5 gap-1 rounded-xl bg-muted/50 p-2.5 sm:p-3">
                 {MOODS.map((m) => {
                   const count = entries.filter((e) => e.mood === m.value).length;
                   const pct = entries.length ? (count / entries.length) * 100 : 0;
                   return (
-                    <div key={m.value} className="flex flex-col items-center gap-1.5">
+                    <div
+                      key={m.value}
+                      className="flex min-w-0 flex-col items-center gap-1"
+                    >
                       <span
-                        className={cn(
-                          "text-2xl leading-none transition-opacity sm:text-[2rem]",
-                          mood === m.value ? "opacity-100" : "opacity-45"
-                        )}
+                        className="text-xl leading-none sm:text-2xl"
                         aria-hidden
                       >
                         {m.emoji}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-[11px] font-semibold tabular-nums">
                         {pct.toFixed(0)}%
+                      </span>
+                      <span className="max-w-full truncate text-[10px] text-muted-foreground">
+                        {m.label}
                       </span>
                     </div>
                   );
@@ -440,108 +474,169 @@ export default function DaysClientPage() {
               </div>
               {!entries.length && (
                 <p className="text-center text-sm text-muted-foreground">
-                  Your saved check-ins will appear in this summary.
+                  Save your first check-in to start this overview.
                 </p>
               )}
 
-              <div className="grid grid-cols-3 items-stretch gap-2.5 text-center">
-                <div className="flex min-h-[92px] flex-col items-center justify-center rounded-lg border p-3">
-                  <p className="flex h-8 items-center font-heading text-xl font-semibold tabular-nums sm:text-2xl">{entries.length ? avgMood : "—"}</p>
-                  <p className="mt-1 flex min-h-7 items-center text-xs leading-4 text-muted-foreground">Avg mood</p>
+              <div className="grid grid-cols-3 items-stretch gap-2 text-center sm:gap-2.5">
+                <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-background/40 px-2 py-3">
+                  <p className="font-heading text-lg font-semibold tabular-nums sm:text-2xl">
+                    {entries.length ? avgMood : "—"}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Avg mood
+                  </p>
                 </div>
-                <div className="flex min-h-[92px] flex-col items-center justify-center rounded-lg border p-3">
-                  <p className="flex h-8 items-center font-heading text-xl font-semibold text-primary tabular-nums sm:text-2xl">
+                <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-background/40 px-2 py-3">
+                  <p className="font-heading text-lg font-semibold text-primary tabular-nums sm:text-2xl">
                     {entries.length ? avgRating : "—"}
                   </p>
-                  <p className="mt-1 flex min-h-7 items-center text-xs leading-4 text-muted-foreground">Avg rating</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Avg rating
+                  </p>
                 </div>
-                <div className="flex min-h-[92px] flex-col items-center justify-center rounded-lg border p-3">
-                  <p className="flex h-8 items-center font-heading text-xl font-semibold text-primary tabular-nums sm:text-2xl">
+                <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-background/40 px-2 py-3">
+                  <p className="font-heading text-lg font-semibold text-primary tabular-nums sm:text-2xl">
                     {entries.length}
                   </p>
-                  <p className="mt-1 flex min-h-7 items-center text-xs leading-4 text-muted-foreground">Check-ins</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Check-ins
+                  </p>
                 </div>
               </div>
-
             </CardContent>
           </Card>
         </FadeIn>
       </div>
 
-      {/* Rating graph */}
+      {/* Rating history */}
       <FadeIn delay={0.1}>
         <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
           <CardHeader>
-            <CardTitle>Day rating over time</CardTitle>
+            <CardTitle>Rating history</CardTitle>
+            <CardDescription>
+              Your daily score and how your ratings are spread across check-ins.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-3">
-            <div className="min-w-0 lg:col-span-2">
-              {chartData.length ? (
-                <ChartContainer config={moodConfig} className="h-[210px] w-full sm:h-[260px]">
-                  <AreaChart data={chartData} margin={{ left: 4, right: 8, top: 8 }}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                    <XAxis
-                      dataKey="day"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={8}
-                      tick={{ fontSize: 11 }}
-                      minTickGap={24}
-                    />
-                    <YAxis
-                      domain={[1, 5]}
-                      ticks={[1, 2, 3, 4, 5]}
-                      tickLine={false}
-                      axisLine={false}
-                      width={32}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Area
-                      type="monotone"
-                      dataKey="rating"
-                      stroke="var(--chart-1)"
-                      strokeWidth={2.5}
-                      fill="var(--chart-1)"
-                      fillOpacity={0.12}
-                      dot={{ r: 2.5, fill: "var(--chart-1)" }}
-                      activeDot={{ r: 5 }}
-                    />
-                  </AreaChart>
-                </ChartContainer>
-              ) : (
-                <div className="flex h-[210px] items-center justify-center rounded-xl border border-dashed text-center text-sm text-muted-foreground sm:h-[260px]">
-                  Save your first daily check-in to see your day-rating trend.
+          <CardContent className="min-w-0">
+            {chartData.length ? (
+              <div className="grid min-w-0 gap-5 sm:gap-6 lg:grid-cols-3">
+                <div className="min-w-0 lg:col-span-2">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">Daily score</p>
+                    <span className="text-[11px] text-muted-foreground">
+                      1–5 scale
+                    </span>
+                  </div>
+                  <ChartContainer
+                    config={moodConfig}
+                    className="h-[200px] w-full sm:h-[240px]"
+                  >
+                    <AreaChart
+                      data={chartData}
+                      margin={{ left: 4, right: 8, top: 8 }}
+                    >
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="day"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        tick={{ fontSize: 11 }}
+                        minTickGap={24}
+                      />
+                      <YAxis
+                        domain={[1, 5]}
+                        ticks={[1, 2, 3, 4, 5]}
+                        tickLine={false}
+                        axisLine={false}
+                        allowDecimals={false}
+                        width={32}
+                      />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Area
+                        type="monotone"
+                        dataKey="rating"
+                        stroke="var(--chart-1)"
+                        strokeWidth={2.5}
+                        fill="var(--chart-1)"
+                        fillOpacity={0.12}
+                        dot={
+                          chartData.length <= 31
+                            ? { r: 2.5, fill: "var(--chart-1)" }
+                            : false
+                        }
+                        activeDot={{ r: 5 }}
+                      />
+                    </AreaChart>
+                  </ChartContainer>
                 </div>
-              )}
-            </div>
 
-            <div className="min-w-0">
-              {entries.length ? (
-                <ChartContainer config={distributionConfig} className="h-[210px] w-full sm:h-[260px]">
-                  <BarChart data={distribution} margin={{ left: 4, right: 8, top: 8 }}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                    <XAxis
-                      dataKey="label"
-                      tickLine={false}
-                      axisLine={false}
-                      tick={{ fontSize: 16 }}
-                    />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} width={24} />
-                    <ChartTooltip content={<ChartTooltipContent hideLabel />} />
-                    <Bar
-                      dataKey="count"
-                      fill="var(--chart-1)"
-                      radius={[6, 6, 0, 0]}
-                      barSize={26}
-                    />
-                  </BarChart>
-                </ChartContainer>
-              ) : (
-                <div className="flex h-[210px] items-center justify-center text-center text-sm text-muted-foreground sm:h-[260px]">
-                  Your rating distribution will appear after your first check-in.
+                <div className="min-w-0">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">Rating mix</p>
+                    <span className="text-[11px] text-muted-foreground">
+                      Days per mood
+                    </span>
+                  </div>
+                  <ChartContainer
+                    config={distributionConfig}
+                    className="h-[200px] w-full sm:h-[240px]"
+                  >
+                    <BarChart
+                      data={distribution}
+                      margin={{ left: 0, right: 4, top: 8 }}
+                    >
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="label"
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fontSize: 15 }}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fontSize: 11 }}
+                        width={28}
+                      />
+                      <ChartTooltip
+                        content={
+                          <ChartTooltipContent
+                            labelFormatter={(value) => {
+                              const mood = MOODS.find(
+                                (item) => item.emoji === value
+                              );
+                              return mood ? `${mood.emoji} ${mood.label}` : value;
+                            }}
+                          />
+                        }
+                      />
+                      <Bar
+                        dataKey="count"
+                        fill="var(--chart-1)"
+                        radius={[6, 6, 0, 0]}
+                        maxBarSize={36}
+                      />
+                    </BarChart>
+                  </ChartContainer>
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed bg-muted/20 px-5 py-8 text-center">
+                <span className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <BarChart3 className="size-5" aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="font-semibold">No rating history yet</p>
+                  <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                    Save your first check-in and your daily scores will show up
+                    here.
+                  </p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </FadeIn>
@@ -551,10 +646,13 @@ export default function DaysClientPage() {
         <Card className="rounded-2xl border-border/70 bg-card/80 shadow-sm">
           <CardHeader>
             <CardTitle>Recent check-ins</CardTitle>
+            <CardDescription>
+              Your latest reflections, newest first.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {entries.length ? (
-            <ul className="flex flex-col gap-2.5">
+            <ul className="grid gap-2.5 sm:grid-cols-2">
               {[...entries]
                 .sort((a, b) =>
                   b.date.localeCompare(a.date) ||
@@ -570,19 +668,20 @@ export default function DaysClientPage() {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.35, delay: i * 0.05, ease: EASE }}
-                      className="flex items-start gap-3 rounded-xl border p-4"
+                      className="flex items-start gap-3 rounded-xl border border-border/70 bg-background/40 p-3.5 transition-colors hover:bg-muted/40 sm:p-4"
                     >
-                      <span className="text-2xl" aria-hidden>
+                      <span
+                        className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted/60 text-xl sm:size-11 sm:text-2xl"
+                        aria-hidden
+                      >
                         {emoji?.emoji ?? "😐"}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-medium">
-                            {entry.date === today
-                              ? `Today · ${longDateLabel(entry.date)}`
-                              : longDateLabel(entry.date)}
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="truncate text-sm font-medium">
+                            {recentDateLabel(entry.date, today || entry.date)}
                           </p>
-                          <span className="text-xs text-muted-foreground">
+                          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
                             {entry.checkedInAt
                               ? new Date(entry.checkedInAt).toLocaleTimeString(
                                   undefined,
@@ -590,15 +689,17 @@ export default function DaysClientPage() {
                                 )
                               : "Time unavailable"}
                           </span>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                           <Badge
                             variant="outline"
                             className="border-primary/30 bg-primary/5 text-primary"
                           >
                             <Star />
-                            {score}/5 · {RATING_LABELS[score - 1]}
+                            {score}/5 · {MOODS[score - 1].label}
                           </Badge>
                         </div>
-                        <p className="mt-0.5 break-words text-sm text-muted-foreground">
+                        <p className="mt-1.5 break-words text-sm leading-relaxed text-muted-foreground">
                           {entry.note || "No notes for this day."}
                         </p>
                       </div>
@@ -607,8 +708,8 @@ export default function DaysClientPage() {
                 })}
             </ul>
             ) : (
-              <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed bg-muted/20 px-5 py-10 text-center">
-                <span className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed bg-muted/20 px-5 py-8 text-center">
+                <span className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                   <CalendarDays className="size-5" aria-hidden="true" />
                 </span>
                 <div>

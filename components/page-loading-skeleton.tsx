@@ -87,81 +87,72 @@ export function PageLoadingSkeleton({
 
   if (variant === "calendar") {
     return (
-      <div
-        className="flex min-h-[calc(100dvh-5rem)] w-full min-w-0 flex-col bg-background px-3 py-3 pb-4 sm:px-4 sm:py-4 md:px-5 md:py-5 lg:h-full lg:min-h-0 lg:px-0 lg:py-0"
+      <section
+        className="flex min-h-[calc(100dvh-5rem)] w-full min-w-0 flex-col bg-background lg:h-full lg:min-h-0 lg:overflow-hidden"
         role="status"
         aria-label={label}
       >
-        <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 pb-3 sm:min-h-16 sm:pb-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Skeleton className="size-5 rounded-md" />
-              <Skeleton className="h-7 w-28" />
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <Skeleton className="h-9 w-20 rounded-full" />
+            <div className="flex items-center">
+              <Skeleton className="size-9 rounded-full" />
+              <Skeleton className="size-9 rounded-full" />
             </div>
-            <Skeleton className="h-4 w-56 max-w-full" />
+            <div className="min-w-0 space-y-1.5">
+              <Skeleton className="h-7 w-32 sm:h-8 sm:w-40" />
+              <Skeleton className="hidden h-3 w-36 sm:block" />
+            </div>
           </div>
-          <Skeleton className="h-8 w-16 rounded-lg sm:h-9 sm:w-20" />
+          <Skeleton className="h-9 w-28 rounded-full" />
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
-          <section className="flex min-w-0 flex-1 flex-col">
-            <div className="overflow-hidden rounded-xl border bg-card/10">
-              <div className="flex min-h-12 items-center justify-between border-b px-2 sm:min-h-14 sm:px-3">
-                <Skeleton className="h-5 w-36" />
-                <div className="flex gap-1">
-                  <Skeleton className="size-9 rounded-lg" />
-                  <Skeleton className="size-9 rounded-lg" />
-                </div>
+        {/* Calendar */}
+        <div className="flex min-h-0 flex-1 flex-col border-t border-border/70">
+          <div className="grid grid-cols-7">
+            {Array.from({ length: 7 }, (_, index) => (
+              <div key={index} className="flex justify-center py-2">
+                <Skeleton className="h-3 w-5 sm:w-8" />
               </div>
-              <div className="grid grid-cols-7 border-b">
-                {Array.from({ length: 7 }, (_, index) => (
-                  <div key={index} className="flex justify-center py-2">
-                    <Skeleton className="h-3 w-5 sm:w-8" />
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-7">
-                {Array.from({ length: 35 }, (_, index) => (
-                  <div
-                    key={index}
-                    className="flex min-h-[52px] min-w-0 flex-col gap-2 border-b border-r p-1.5 sm:min-h-[76px] sm:p-2"
-                  >
-                    <Skeleton className="size-6 rounded-full sm:size-7" />
-                    <Skeleton className="hidden h-3 w-14 max-w-full sm:block" />
-                    <div className="flex gap-0.5 sm:hidden">
-                      {[0, 1, 2].map((dot) => (
-                        <Skeleton key={dot} className="size-1 rounded-full" />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
+            ))}
+          </div>
 
-          <aside className="hidden shrink-0 flex-col overflow-hidden border-l bg-card/40 lg:flex lg:h-full lg:w-80 xl:w-96">
-            <div className="flex min-h-14 items-center justify-between border-b px-4">
-              <div className="space-y-2">
-                <Skeleton className="h-5 w-36" />
-                <Skeleton className="h-3 w-24" />
+          <div className="app-scroll-region grid min-h-0 flex-1 grid-cols-7 overflow-y-auto border-l border-border/60 [grid-template-rows:repeat(5,minmax(5.5rem,1fr))] lg:[grid-template-rows:repeat(5,minmax(7.5rem,1fr))]">
+            {Array.from({ length: 35 }, (_, index) => (
+              <div
+                key={index}
+                className="flex min-h-0 min-w-0 flex-col items-stretch gap-1 border-b border-r border-border/60 p-1 sm:p-1.5"
+              >
+                <span className="flex shrink-0 justify-center">
+                  <Skeleton className="h-7 min-w-7 rounded-full sm:h-8 sm:min-w-8" />
+                </span>
+
+                {/* Desktop: event chips */}
+                <span className="hidden min-h-0 flex-1 flex-col gap-0.5 md:flex">
+                  {index % 3 === 0 && (
+                    <Skeleton className="h-5 w-full rounded" />
+                  )}
+                  {index % 4 === 0 && (
+                    <Skeleton className="h-5 w-4/5 rounded" />
+                  )}
+                </span>
+
+                {/* Mobile: dots */}
+                <span className="mt-auto flex shrink-0 justify-center gap-1 pb-1 md:hidden">
+                  {index % 3 === 0 && (
+                    <>
+                      <Skeleton className="size-1.5 rounded-full" />
+                      <Skeleton className="size-1.5 rounded-full" />
+                    </>
+                  )}
+                </span>
               </div>
-              <Skeleton className="size-8 rounded-lg" />
-            </div>
-            <div className="flex-1 divide-y">
-              {Array.from({ length: 4 }, (_, index) => (
-                <div key={index} className="flex items-start gap-3 px-4 py-4">
-                  <Skeleton className="mt-0.5 size-4 shrink-0 rounded-sm" />
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <Skeleton className="h-4 w-4/5" />
-                    <Skeleton className="h-3 w-full" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </aside>
+            ))}
+          </div>
         </div>
         <span className="sr-only">{label}</span>
-      </div>
+      </section>
     );
   }
 
